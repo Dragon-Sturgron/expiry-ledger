@@ -1,4 +1,4 @@
-import { cleanItem, corsHeaders, error, getKV, getUserId, json, listAllKeys, newId, readJson, safeId, requireAccess } from '../utils/shared.js'
+import { cleanItem, corsHeaders, error, requireKV, getUserId, json, listAllKeys, newId, kvGetJson, kvPutJson, readJson, safeId, requireAccess } from '../utils/shared.js'
 
 function tplKey(userId, id) { return `tpl_${safeId(userId)}_${safeId(id)}` }
 function tplPrefix(userId) { return `tpl_${safeId(userId)}_` }
@@ -11,13 +11,13 @@ export async function onRequestGet(context) {
   const denied = await requireAccess(context)
   if (denied) return denied
   const { request } = context
-  const kv = getKV(context)
-  const userId = getUserId(request)
-  if (!userId) return error('缺少 userId', 400)
-  const keys = await listAllKeys(kv, tplPrefix(userId))
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
+  const userId = getUserId(request) || 'default'
+  const keys = await listAllKeys(kv, 'tpl_')
   const templates = []
   for (const key of keys) {
-    const tpl = await kv.get(key, { type: 'json' })
+    const tpl = await kvGetJson(kv, key)
     if (tpl) templates.push(tpl)
   }
   return json({ ok: true, templates })
@@ -28,9 +28,10 @@ export async function onRequestPost(context) {
   if (denied) return denied
   const { request } = context
   const body = await readJson(request)
-  const kv = getKV(context)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
   const userId = getUserId(request, body)
-  if (!userId) return error('缺少 userId', 400)
+  if (!userId) body.userId = 'default'
   const item = cleanItem(body.template || {})
   const template = {
     ...item,
@@ -40,7 +41,7 @@ export async function onRequestPost(context) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
-  await kv.put(tplKey(userId, template.id), JSON.stringify(template))
+  await kvPutJson(kv, tplKey(userId || 'default', template.id), template)
   return json({ ok: true, template })
 }
 
@@ -49,7 +50,8 @@ export async function onRequestDelete(context) {
   if (denied) return denied
   const { request } = context
   const body = await readJson(request)
-  const kv = getKV(context)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
   const userId = getUserId(request, body)
   const id = safeId(body.id || '')
   if (!userId || !id) return error('缺少 userId 或 id', 400)

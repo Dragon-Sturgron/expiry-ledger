@@ -1,4 +1,4 @@
-import { corsHeaders, getEnv, getKV, getUrl, json, listAllKeys, readJson, safeId } from '../../utils/shared.js'
+import { corsHeaders, getEnv, requireKV, getUrl, json, listAllKeys, readJson, safeId } from '../../utils/shared.js'
 import { sendTemplateMessage } from '../../utils/wx.js'
 
 export function onRequestOptions() { return new Response(null, { status: 204, headers: corsHeaders() }) }
@@ -21,7 +21,8 @@ function statusInfo(item) {
 
 export async function onRequest(context) {
   const { request } = context
-  const kv = getKV(context)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
   const body = await readJson(request)
   const secret = getEnv(context, 'NOTIFY_SECRET')
   const inputSecret = getUrl(request).searchParams.get('secret') || body.secret || request.headers.get('x-notify-secret')

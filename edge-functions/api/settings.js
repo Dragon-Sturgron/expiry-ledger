@@ -1,4 +1,4 @@
-import { corsHeaders, error, getKV, getUserId, json, readJson, safeId, requireAccess } from '../utils/shared.js'
+import { corsHeaders, error, requireKV, getUserId, json, readJson, safeId, requireAccess } from '../utils/shared.js'
 
 function settingKey(userId) { return `setting_${safeId(userId)}` }
 
@@ -26,7 +26,8 @@ export async function onRequestGet(context) {
   const denied = await requireAccess(context)
   if (denied) return denied
   const { request } = context
-  const kv = getKV(context)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
   const userId = getUserId(request)
   if (!userId) return error('缺少 userId', 400)
   const settings = await kv.get(settingKey(userId), { type: 'json' })
@@ -38,7 +39,8 @@ export async function onRequestPost(context) {
   if (denied) return denied
   const { request } = context
   const body = await readJson(request)
-  const kv = getKV(context)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
   const userId = getUserId(request, body)
   if (!userId) return error('缺少 userId', 400)
   const settings = cleanSettings(body.settings || {})

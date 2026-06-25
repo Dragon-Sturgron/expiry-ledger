@@ -79,6 +79,11 @@ function showToast(msg) {
   toastTimer = setTimeout(() => { toast.value = '' }, 2400)
 }
 
+function executeSearch() {
+  query.value = query.value.trim()
+  if (document?.activeElement?.blur) document.activeElement.blur()
+}
+
 async function loadAll() {
   if (auth.required && !auth.authed) return
   loading.value = true
@@ -436,7 +441,7 @@ async function stopScanner() {
       <div class="search-box">
         <span>⌕</span>
         <input v-model="query" placeholder="请输入关键词" />
-        <button @click="startScanner('query')">⌗</button>
+        <button class="search-action" @click="executeSearch">搜索</button>
       </div>
 
       <div class="stats-grid">
@@ -480,7 +485,10 @@ async function stopScanner() {
         <div v-if="!todoRows.length" class="empty">暂无临期或过期物品</div>
       </div>
 
-      <div class="item-cards" v-if="query">
+      <div v-if="!filteredItems.length && items.length" class="empty">没有匹配的物品</div>
+      <div v-if="!items.length" class="empty">暂无物品，点击右下角 + 添加第一条记录</div>
+
+      <div class="item-cards" v-if="filteredItems.length">
         <article v-for="item in filteredItems" :key="item.id" class="item-card" @click="openDetail(item)">
           <div class="thumb" :style="item.imageUrl ? { backgroundImage: `url(${item.imageUrl})` } : {}">
             <span v-if="!item.imageUrl">📷</span>
@@ -496,7 +504,7 @@ async function stopScanner() {
 
       <div class="fab-stack">
         <button class="fab small" @click="activeTab='todo'">效期<br>计算</button>
-        <button class="fab" @click="startScanner('query')">⌗</button>
+        <button class="fab fab-scan" @click="startScanner('query')" aria-label="扫码"><span class="scan-mark"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></span></button>
         <button class="fab" @click="openAdd()">＋</button>
       </div>
 

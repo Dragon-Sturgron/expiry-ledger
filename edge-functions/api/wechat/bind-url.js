@@ -1,4 +1,4 @@
-import { corsHeaders, error, getKV, getUserId, json, newId, safeId, requireAccess } from '../../utils/shared.js'
+import { corsHeaders, error, requireKV, getUserId, json, newId, safeId, requireAccess } from '../../utils/shared.js'
 import { buildOAuthUrl, wxConfig } from '../../utils/wx.js'
 
 export function onRequestOptions() { return new Response(null, { status: 204, headers: corsHeaders() }) }
@@ -7,7 +7,8 @@ export async function onRequestGet(context) {
   const denied = await requireAccess(context)
   if (denied) return denied
   const { request } = context
-  const kv = getKV(context)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
   const userId = getUserId(request)
   if (!userId) return error('缺少 userId', 400)
   const cfg = wxConfig(context)

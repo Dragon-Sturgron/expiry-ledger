@@ -31,37 +31,55 @@ export function getEnv(context, name, fallback = '') {
   return context?.env?.[name] || globalThis?.[name] || procEnv?.[name] || fallback
 }
 
-const memory = new Map()
-function createMemoryKV() {
-  return {
-    async get(key, options) {
-      const value = memory.get(key)
-      if (value == null) return null
-      const type = typeof options === 'string' ? options : options?.type
-      if (type === 'json') {
-        try { return JSON.parse(value) } catch { return null }
-      }
-      return value
-    },
-    async put(key, value) {
-      memory.set(key, typeof value === 'string' ? value : JSON.stringify(value))
-    },
-    async delete(key) { memory.delete(key) },
-    async list({ prefix = '', limit = 256, cursor = '' } = {}) {
-      const keys = Array.from(memory.keys()).filter(k => k.startsWith(prefix)).sort()
-      const start = cursor ? Math.max(0, keys.findIndex(k => k > cursor)) : 0
-      const page = keys.slice(start, start + limit)
-      const last = page[page.length - 1]
-      return { complete: start + limit >= keys.length, cursor: start + limit >= keys.length ? null : last, keys: page.map(key => ({ key })) }
-    }
-  }
+export function hasKVBinding(context) {
+  return Boolean(context?.env?.[KV_NAME] || globalThis?.[KV_NAME])
 }
 
 export function getKV(context) {
   const kv = context?.env?.[KV_NAME] || globalThis?.[KV_NAME]
-  if (kv) return kv
-  console.warn(`[临期账本] 未找到 ${KV_NAME} KV 绑定，当前仅使用内存KV，部署后请在 EdgeOne Makers 绑定命名空间。`)
-  return createMemoryKV()
+  return kv || null
+}
+
+export function kvNotBoundResponse() {
+  return error(`未绑定 ${KV_NAME}，请先在 EdgeOne Makers 项目中绑定 KV 命名空间变量 ${KV_NAME} 后再使用。`, 500, { code: 'KV_NOT_BOUND' })
+}
+
+export function requireKV(context) {
+  const kv = getKV(context)
+  if (!kv) return { kv: null, response: kvNotBoundResponse() }
+  return { kv, response: null }
+}
+
+export async function kvGetJson(kv, key) {
+  if (!key) return null
+  try {
+    const value = await kv.get(key, { type: 'json' })
+    if (value && typeof value === 'object') return value
+    if (typeof value === 'string') {
+      try { return JSON.parse(value) } catch { return null }
+    }
+    return value || null
+  } catch {
+    try {
+      const value = await kv.get(key)
+      if (typeof value === 'string') {
+        try { return JSON.parse(value) } catch { return null }
+      }
+      return value || null
+    } catch {
+      return null
+    }
+  }
+}
+
+export async function kvPutJson(kv, key, value) {
+  return kv.put(key, JSON.stringify(value))
+}
+
+export function normalizeKVKey(item) {
+  if (!item) return ''
+  if (typeof item === 'string') return item
+  return item.key || item.name || item.id || ''
 }
 
 export function safeId(input = '') {
@@ -85,13 +103,19 @@ export function getUserId(request, body = {}) {
 export async function listAllKeys(kv, prefix) {
   const out = []
   let cursor = undefined
+  let guard = 0
   do {
-    const result = await kv.list({ prefix, limit: 256, cursor })
-    out.push(...(result?.keys || []).map(x => x.key))
-    cursor = result?.cursor
-    if (result?.complete) break
-  } while (cursor)
-  return out
+    const args = { prefix, limit: 256 }
+    if (cursor) args.cursor = cursor
+    const result = await kv.list(args)
+    const rawKeys = result?.keys || result?.list || result?.items || result?.data || []
+    out.push(...rawKeys.map(normalizeKVKey).filter(Boolean))
+    const complete = result?.complete ?? result?.list_complete ?? result?.done
+    const nextCursor = result?.cursor || result?.nextCursor || result?.next_cursor || ''
+    cursor = complete ? '' : nextCursor
+    guard++
+  } while (cursor && guard < 50)
+  return Array.from(new Set(out))
 }
 
 

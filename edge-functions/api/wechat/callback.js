@@ -1,4 +1,4 @@
-import { error, getKV, getUrl, json, safeId } from '../../utils/shared.js'
+import { error, requireKV, getUrl, json, safeId } from '../../utils/shared.js'
 import { exchangeOAuthCode, wxConfig } from '../../utils/wx.js'
 
 function html(message, siteUrl) {
@@ -9,7 +9,8 @@ function html(message, siteUrl) {
 
 export async function onRequestGet(context) {
   const { request } = context
-  const kv = getKV(context)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
   const url = getUrl(request)
   const code = url.searchParams.get('code')
   const state = safeId(url.searchParams.get('state') || '')

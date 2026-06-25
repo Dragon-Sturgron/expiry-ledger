@@ -1,4 +1,4 @@
-const USER_ID_KEY = 'linqi_ledger_user_id'
+const USER_ID_KEY = 'expiry_ledger_user_id'
 const ACCESS_TOKEN_KEY = 'expiry_ledger_access_token'
 
 function uid() {
@@ -9,15 +9,15 @@ function uid() {
 export function getUserId() {
   let id = localStorage.getItem(USER_ID_KEY)
   if (!id) {
-    id = uid()
+    id = 'default'
     localStorage.setItem(USER_ID_KEY, id)
   }
   return id
 }
 
 export function resetUserId() {
-  localStorage.removeItem(USER_ID_KEY)
-  return getUserId()
+  localStorage.setItem(USER_ID_KEY, 'default')
+  return 'default'
 }
 
 export function getAccessToken() {
