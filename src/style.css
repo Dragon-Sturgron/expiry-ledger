@@ -28,7 +28,7 @@ input { border: 0; outline: none; background: transparent; color: #182232; min-w
 .back-btn { display: grid; place-items: center; border-radius: 12px; background: #fff; border: 1px solid #e7ebf1; color: #172033; font-size: 18px; line-height: 1; box-shadow: 0 6px 16px rgba(15, 23, 42, .05); }
 .back-btn:active { transform: scale(.97); }
 .header-placeholder { display: block; }
-.search-box { height: 36px; background: #fff; display: flex; align-items: center; gap: 8px; padding: 0 12px; margin-bottom: 28px; color: #9da5b0; }
+.search-box { height: 36px; background: #fff; display: flex; align-items: center; gap: 8px; padding: 0 12px; margin: 0 0 28px; color: #9da5b0; }
 .search-box input { flex: 1; }
 .search-box button { color: #9da5b0; font-size: 20px; }
 .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); background: #fff; margin: 0 4px 12px; border-radius: 2px; overflow: hidden; }

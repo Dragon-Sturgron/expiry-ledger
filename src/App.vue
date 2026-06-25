@@ -15,6 +15,7 @@ const selectedItem = ref(null)
 const editingId = ref('')
 const scannerVisible = ref(false)
 const scannerInstance = ref(null)
+const scannerTarget = ref('barcode')
 const scannerTip = ref('')
 const wechatStatus = ref({ bound: false })
 
@@ -363,7 +364,8 @@ async function manualNotify() {
   }
 }
 
-async function startScanner() {
+async function startScanner(target = screen.value === 'home' ? 'query' : 'barcode') {
+  scannerTarget.value = target
   scannerVisible.value = true
   scannerTip.value = '正在启动摄像头...'
   await nextTick()
@@ -375,15 +377,22 @@ async function startScanner() {
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 260, height: 160 } },
       decodedText => {
-        form.barcode = decodedText
-        showToast('已识别条码')
+        if (scannerTarget.value === 'query') {
+          query.value = decodedText
+          showToast('已识别并填入关键词')
+        } else {
+          form.barcode = decodedText
+          showToast('已识别条码')
+        }
         stopScanner()
       },
       () => {}
     )
-    scannerTip.value = '请将条形码或二维码放入扫描框'
+    scannerTip.value = scannerTarget.value === 'query'
+      ? '请将条形码或二维码放入扫描框，识别后会填入关键词'
+      : '请将条形码或二维码放入扫描框'
   } catch (e) {
-    scannerTip.value = '摄像头启动失败：请确认 HTTPS、浏览器权限，或手动输入条码。'
+    scannerTip.value = '摄像头启动失败：请确认 HTTPS、浏览器权限，或手动输入。'
   }
 }
 
@@ -423,18 +432,11 @@ async function stopScanner() {
 
     <template v-else>
     <section v-if="screen === 'home'" class="page home-page">
-      <header class="home-header">
-        <div>
-          <div class="space-title">默认空间</div>
-          <p class="header-subtitle">管理你的临期物品</p>
-        </div>
-        <button class="text-action">邀请</button>
-      </header>
 
       <div class="search-box">
         <span>⌕</span>
         <input v-model="query" placeholder="请输入关键词" />
-        <button @click="startScanner">⌗</button>
+        <button @click="startScanner('query')">⌗</button>
       </div>
 
       <div class="stats-grid">
@@ -494,7 +496,7 @@ async function stopScanner() {
 
       <div class="fab-stack">
         <button class="fab small" @click="activeTab='todo'">效期<br>计算</button>
-        <button class="fab" @click="startScanner">⌗</button>
+        <button class="fab" @click="startScanner('query')">⌗</button>
         <button class="fab" @click="openAdd()">＋</button>
       </div>
 
@@ -536,7 +538,7 @@ async function stopScanner() {
 
       <p class="section-title fold">其他信息 <span>⌄</span></p>
       <div class="card form-card">
-        <label><span>条形码&二维码</span><input v-model="form.barcode" placeholder="请输入"><button class="scan-btn" @click.prevent="startScanner">扫码</button></label>
+        <label><span>条形码&二维码</span><input v-model="form.barcode" placeholder="请输入"><button class="scan-btn" @click.prevent="startScanner('barcode')">扫码</button></label>
         <label><span>备注</span><input v-model="form.remark" placeholder="请输入备注"></label>
         <label><span>同时保存到模板库</span><label class="switch"><input type="checkbox" v-model="form.saveToTemplate"><i></i></label></label>
       </div>
