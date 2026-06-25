@@ -1,21 +1,19 @@
-# Expiry Ledger（临期账本）
+# Expiry Ledger / 临期账本
 
-适配腾讯 EdgeOne Makers 的移动端网页项目。
+EdgeOne Makers 预构建部署版。
 
-## 功能
+## 本版核心变化
 
-- 访问密码保护：通过 `ACCESS_PASSWORD` 环境变量控制。
-- 商品/物品临期记录：新增、编辑、删除、详情、分类、标签、搜索。
-- 条形码/二维码扫码：浏览器 HTTPS 环境下调用摄像头识别。
-- 图片链接展示。
-- 模板库：保存常用物品模板并复用。
-- 数据存储：EdgeOne KV，绑定变量名必须为 `EXPIRE_KV`。
-- 微信公众号绑定：通过网页授权获取 openid。
-- 临期/过期通知：通过公众号模板消息发送，定时任务每天 08:00 执行 `/api/notify/run`。
+- 数据模式改为 **商品资料库 + 效期记录**。
+- 商品资料保存名称、分类、条码、图片、默认保质期。
+- 添加效期记录时引用商品资料，只填写数量、日期、到期时间等时效信息。
+- 支持七牛云 Kodo 图片上传；KV 只保存图片 URL，不保存图片文件。
+- 首页显示效期记录，也可以切换查看商品资料。
+- 仍然支持访问密码、EdgeOne KV、微信公众号绑定和临期/过期通知。
 
-## EdgeOne Makers 部署说明
+## EdgeOne Makers 部署
 
-本包是“预构建部署版”：已经包含 `dist/`，并且 `edgeone.json` 已设置跳过依赖安装和构建。
+本项目已经包含 `dist/`，并在 `edgeone.json` 中设置：
 
 ```json
 {
@@ -25,63 +23,100 @@
 }
 ```
 
-这样可以避免 EdgeOne 构建环境卡在 `npm install`。
+因此 EdgeOne Makers 会跳过 npm install 和构建，直接部署 dist。
 
-## 需要配置的参数
+## GitHub 上传
 
-### KV 绑定
+上传以下文件/目录：
 
-- `EXPIRE_KV`：EdgeOne KV 命名空间绑定变量，不是普通环境变量。
-
-### 环境变量
-
-```env
-ACCESS_PASSWORD=你的访问密码
-ACCESS_AUTH_SALT=可选，建议填写一串复杂字符
-
-WX_APPID=你的公众号AppID
-WX_SECRET=你的公众号AppSecret
-WX_TEMPLATE_ID=你的公众号模板消息ID
-SITE_URL=https://你的正式域名
-
-NOTIFY_SECRET=可选，手动触发通知接口时使用
+```text
+dist/
+src/
+edge-functions/
+index.html
+package.json
+package-lock.json
+edgeone.json
+vite.config.js
+README.md
+.gitignore
+.env.example
 ```
-
-## GitHub 上传内容
-
-需要上传：
-
-- `dist/`
-- `src/`
-- `edge-functions/`
-- `index.html`
-- `package.json`
-- `package-lock.json`
-- `edgeone.json`
-- `vite.config.js`
-- `README.md`
-- `.gitignore`
-- `.env.example`
 
 不要上传：
 
-- `node_modules/`
-- `.edgeone/`
-- `.env`
-- `.env.local`
-
-## 本地二次开发
-
-```bash
-npm install --registry=https://registry.npmmirror.com
-npm run dev
+```text
+node_modules/
+.edgeone/
+.env
+.env.local
+.npmrc
 ```
 
-每次改前端后，先本地构建再提交：
+## 必须配置
 
-```bash
-npm run build
-git add .
-git commit -m "update"
-git push
+### EdgeOne KV 绑定
+
+在 EdgeOne Makers 项目中绑定 KV 命名空间，变量名必须是：
+
+```text
+EXPIRE_KV
 ```
+
+### 访问密码
+
+环境变量：
+
+```text
+ACCESS_PASSWORD=你的访问密码
+ACCESS_AUTH_SALT=一串自定义随机字符
+```
+
+## 七牛云 Kodo 图片上传配置
+
+环境变量：
+
+```text
+QINIU_ACCESS_KEY=七牛云 AccessKey
+QINIU_SECRET_KEY=七牛云 SecretKey
+QINIU_BUCKET=空间名称
+QINIU_DOMAIN=https://你的图片访问域名
+QINIU_UPLOAD_URL=https://upload.qiniup.com
+```
+
+说明：
+
+- `QINIU_DOMAIN` 是图片访问域名，可以是七牛测试域名或你绑定的 CDN 域名。
+- `QINIU_UPLOAD_URL` 按空间区域填写，华东常用 `https://upload.qiniup.com`，华南可用 `https://upload-z2.qiniup.com` 或七牛控制台提供的上传域名。
+- 七牛空间需要允许网页跨域上传；如遇 CORS 问题，请在七牛控制台配置跨域来源为你的网站域名。
+
+## 微信公众号通知配置
+
+```text
+WX_APPID=公众号 AppID
+WX_SECRET=公众号 AppSecret
+WX_TEMPLATE_ID=模板消息 ID
+SITE_URL=https://你的正式域名
+NOTIFY_SECRET=手动触发通知密钥
+```
+
+## 数据结构
+
+商品资料：
+
+```text
+product_xxx
+```
+
+效期记录：
+
+```text
+record_xxx
+```
+
+旧版 `item_` 数据会在列表中兼容显示，但新增数据会使用新版 `record_` / `product_` 结构。
+
+
+## 配置方式更新
+
+本版已将七牛云图片上传和微信公众号通知参数移入页面「设置」中配置。EdgeOne Makers 环境变量只需要保留访问密码等基础参数；七牛云和微信参数可以在需要使用时再进入页面填写并保存。

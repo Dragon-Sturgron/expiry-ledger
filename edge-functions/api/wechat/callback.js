@@ -14,9 +14,10 @@ export async function onRequestGet(context) {
   const url = getUrl(request)
   const code = url.searchParams.get('code')
   const state = safeId(url.searchParams.get('state') || '')
-  const cfg = wxConfig(context)
   if (!code || !state) return error('缺少微信回调 code/state', 400)
   const saved = await kv.get(`oauthstate_${state}`, { type: 'json' })
+  const settings = saved?.userId ? await getStoredSettings(kv, saved.userId) : {}
+  const cfg = wxConfig(context, settings)
   if (!saved?.userId || saved.expireAt < Date.now()) return html('绑定链接已失效，请返回重新绑定', cfg.siteUrl)
   try {
     const data = await exchangeOAuthCode({ appid: cfg.appid, secret: cfg.secret, code })

@@ -1,11 +1,12 @@
 export const KV_NAME = 'EXPIRE_KV'
 
-export function corsHeaders() {
+export function corsHeaders(extra = {}) {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Content-Type': 'application/json; charset=UTF-8'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-notify-secret',
+    'Content-Type': 'application/json; charset=UTF-8',
+    ...extra
   }
 }
 
@@ -31,22 +32,15 @@ export function getEnv(context, name, fallback = '') {
   return context?.env?.[name] || globalThis?.[name] || procEnv?.[name] || fallback
 }
 
-export function hasKVBinding(context) {
-  return Boolean(context?.env?.[KV_NAME] || globalThis?.[KV_NAME])
-}
-
 export function getKV(context) {
-  const kv = context?.env?.[KV_NAME] || globalThis?.[KV_NAME]
-  return kv || null
-}
-
-export function kvNotBoundResponse() {
-  return error(`未绑定 ${KV_NAME}，请先在 EdgeOne Makers 项目中绑定 KV 命名空间变量 ${KV_NAME} 后再使用。`, 500, { code: 'KV_NOT_BOUND' })
+  return context?.env?.[KV_NAME] || globalThis?.[KV_NAME] || null
 }
 
 export function requireKV(context) {
   const kv = getKV(context)
-  if (!kv) return { kv: null, response: kvNotBoundResponse() }
+  if (!kv) {
+    return { kv: null, response: error(`未绑定 ${KV_NAME}，请先在 EdgeOne Makers 项目中绑定 KV 命名空间变量 ${KV_NAME} 后再使用。`, 500, { code: 'KV_NOT_BOUND' }) }
+  }
   return { kv, response: null }
 }
 
@@ -82,24 +76,6 @@ export function normalizeKVKey(item) {
   return item.key || item.name || item.id || ''
 }
 
-export function safeId(input = '') {
-  return String(input).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120)
-}
-
-export function newId(prefix = 'id') {
-  const raw = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}_${Math.random()}`
-  return `${prefix}_${raw.replace(/[^a-zA-Z0-9]/g, '_')}`
-}
-
-export function getUrl(request) {
-  return new URL(request.url)
-}
-
-export function getUserId(request, body = {}) {
-  const url = getUrl(request)
-  return safeId(body.userId || url.searchParams.get('userId') || '')
-}
-
 export async function listAllKeys(kv, prefix) {
   const out = []
   let cursor = undefined
@@ -118,7 +94,31 @@ export async function listAllKeys(kv, prefix) {
   return Array.from(new Set(out))
 }
 
+export function safeId(input = '') {
+  return String(input).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120)
+}
 
+export function newId(prefix = 'id') {
+  const raw = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}_${Math.random()}`
+  return `${prefix}_${raw.replace(/[^a-zA-Z0-9]/g, '_')}`
+}
+
+export function getUrl(request) {
+  return new URL(request.url)
+}
+
+export function getUserId(request, body = {}) {
+  const url = getUrl(request)
+  return safeId(body.userId || url.searchParams.get('userId') || 'default') || 'default'
+}
+
+export function settingKey(userId = 'default') {
+  return `setting_${safeId(userId || 'default')}`
+}
+
+export async function getStoredSettings(kv, userId = 'default') {
+  return (await kvGetJson(kv, settingKey(userId))) || {}
+}
 
 async function sha256Hex(input) {
   const data = new TextEncoder().encode(String(input))
@@ -151,24 +151,66 @@ export async function requireAccess(context) {
   return error('请输入正确的访问密码', 401, { code: 'ACCESS_PASSWORD_REQUIRED', required: result.required })
 }
 
-export function cleanItem(item = {}) {
+export function cleanProduct(product = {}) {
   return {
-    id: safeId(item.id || newId('item')),
-    name: String(item.name || '').trim().slice(0, 80),
-    category: String(item.category || '').trim().slice(0, 40),
-    imageUrl: String(item.imageUrl || '').trim().slice(0, 600),
-    tags: Array.isArray(item.tags) ? item.tags.map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 12) : [],
-    quantity: Number(item.quantity || 0),
-    warningQty: Number(item.warningQty || 0),
-    startDate: String(item.startDate || '').slice(0, 10),
-    shelfLifeValue: item.shelfLifeValue === '' ? '' : Number(item.shelfLifeValue || 0),
-    shelfLifeUnit: ['day', 'month', 'year'].includes(item.shelfLifeUnit) ? item.shelfLifeUnit : 'day',
-    expiryDate: String(item.expiryDate || '').slice(0, 10),
-    reminder: Boolean(item.reminder),
-    remindDays: Number(item.remindDays || 0),
-    barcode: String(item.barcode || '').trim().slice(0, 120),
-    remark: String(item.remark || '').trim().slice(0, 500),
-    createdAt: item.createdAt || new Date().toISOString(),
+    id: safeId(product.id || newId('product')),
+    name: String(product.name || '').trim().slice(0, 80),
+    category: String(product.category || '').trim().slice(0, 40),
+    barcode: String(product.barcode || '').trim().slice(0, 120),
+    imageUrl: String(product.imageUrl || '').trim().slice(0, 600),
+    tags: Array.isArray(product.tags) ? product.tags.map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 12) : [],
+    defaultShelfLifeValue: product.defaultShelfLifeValue === '' ? '' : Number(product.defaultShelfLifeValue || 0),
+    defaultShelfLifeUnit: ['day', 'month', 'year'].includes(product.defaultShelfLifeUnit) ? product.defaultShelfLifeUnit : 'day',
+    remark: String(product.remark || '').trim().slice(0, 500),
+    createdAt: product.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
+}
+
+export function cleanRecord(record = {}) {
+  return {
+    id: safeId(record.id || newId('record')),
+    productId: safeId(record.productId || ''),
+    productSnapshot: record.productSnapshot && typeof record.productSnapshot === 'object' ? record.productSnapshot : null,
+    quantity: Number(record.quantity || 0),
+    warningQty: Number(record.warningQty || 0),
+    startDate: String(record.startDate || '').slice(0, 10),
+    shelfLifeValue: record.shelfLifeValue === '' ? '' : Number(record.shelfLifeValue || 0),
+    shelfLifeUnit: ['day', 'month', 'year'].includes(record.shelfLifeUnit) ? record.shelfLifeUnit : 'day',
+    expiryDate: String(record.expiryDate || '').slice(0, 10),
+    reminder: Boolean(record.reminder),
+    remindDays: Number(record.remindDays || 0),
+    location: String(record.location || '').trim().slice(0, 120),
+    remark: String(record.remark || '').trim().slice(0, 500),
+    createdAt: record.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+}
+
+export function legacyItemToRecord(item = {}) {
+  const productId = safeId(item.productId || `legacy_product_${item.id || newId('legacy')}`)
+  return cleanRecord({
+    id: safeId(item.id || newId('record')),
+    productId,
+    productSnapshot: {
+      id: productId,
+      name: item.name || '',
+      category: item.category || '',
+      barcode: item.barcode || '',
+      imageUrl: item.imageUrl || '',
+      tags: item.tags || []
+    },
+    quantity: item.quantity,
+    warningQty: item.warningQty,
+    startDate: item.startDate,
+    shelfLifeValue: item.shelfLifeValue,
+    shelfLifeUnit: item.shelfLifeUnit,
+    expiryDate: item.expiryDate,
+    reminder: item.reminder,
+    remindDays: item.remindDays,
+    location: item.location || '',
+    remark: item.remark || '',
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt
+  })
 }

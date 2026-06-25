@@ -6,7 +6,16 @@ const DEFAULT_SETTINGS = {
   nearDays: 30,
   defaultRemindDays: 3,
   defaultCategory: '',
-  autoCloseDialog: false
+  autoCloseDialog: false,
+  qiniuAccessKey: '',
+  qiniuSecretKey: '',
+  qiniuBucket: '',
+  qiniuDomain: '',
+  qiniuUploadUrl: 'https://upload.qiniup.com',
+  wxAppid: '',
+  wxSecret: '',
+  wxTemplateId: '',
+  siteUrl: ''
 }
 
 function cleanSettings(s = {}) {
@@ -14,7 +23,16 @@ function cleanSettings(s = {}) {
     nearDays: Math.max(1, Math.min(3650, Number(s.nearDays || 30))),
     defaultRemindDays: Math.max(0, Math.min(3650, Number(s.defaultRemindDays || 3))),
     defaultCategory: String(s.defaultCategory || '').slice(0, 40),
-    autoCloseDialog: Boolean(s.autoCloseDialog)
+    autoCloseDialog: Boolean(s.autoCloseDialog),
+    qiniuAccessKey: String(s.qiniuAccessKey || '').trim().slice(0, 200),
+    qiniuSecretKey: String(s.qiniuSecretKey || '').trim().slice(0, 200),
+    qiniuBucket: String(s.qiniuBucket || '').trim().slice(0, 120),
+    qiniuDomain: String(s.qiniuDomain || '').trim().replace(/\/$/, '').slice(0, 300),
+    qiniuUploadUrl: String(s.qiniuUploadUrl || 'https://upload.qiniup.com').trim().replace(/\/$/, '').slice(0, 300),
+    wxAppid: String(s.wxAppid || '').trim().slice(0, 120),
+    wxSecret: String(s.wxSecret || '').trim().slice(0, 200),
+    wxTemplateId: String(s.wxTemplateId || '').trim().slice(0, 200),
+    siteUrl: String(s.siteUrl || '').trim().replace(/\/$/, '').slice(0, 300)
   }
 }
 

@@ -1,0 +1,101 @@
+import { cleanRecord, corsHeaders, error, getUserId, json, kvGetJson, kvPutJson, legacyItemToRecord, listAllKeys, readJson, requireAccess, requireKV, safeId } from '../utils/shared.js'
+
+function recordKey(userId, id) { return `record_${safeId(userId || 'default')}_${safeId(id)}` }
+
+export function onRequestOptions() {
+  return new Response(null, { status: 204, headers: corsHeaders() })
+}
+
+async function getAllRecords(kv) {
+  const keys = await listAllKeys(kv, 'record_')
+  const records = []
+  for (const key of keys) {
+    const record = await kvGetJson(kv, key)
+    if (record?.id) records.push(record)
+  }
+
+  // 兼容旧版 item_ 数据，避免升级后旧数据不显示
+  const legacyKeys = await listAllKeys(kv, 'item_')
+  for (const key of legacyKeys) {
+    const item = await kvGetJson(kv, key)
+    if (item?.id) records.push(legacyItemToRecord(item))
+  }
+
+  const seen = new Set()
+  return records.filter(record => {
+    const id = safeId(record.id || '')
+    if (!id || seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
+async function findExistingRecordKey(kv, id, preferredUserId = 'default') {
+  const safe = safeId(id || '')
+  if (!safe) return ''
+  const preferredKey = recordKey(preferredUserId || 'default', safe)
+  const preferred = await kvGetJson(kv, preferredKey)
+  if (preferred?.id) return preferredKey
+  const keys = await listAllKeys(kv, 'record_')
+  for (const key of keys) {
+    const record = await kvGetJson(kv, key)
+    if (safeId(record?.id || '') === safe) return key
+  }
+  return preferredKey
+}
+
+export async function onRequestGet(context) {
+  const denied = await requireAccess(context)
+  if (denied) return denied
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
+  const records = await getAllRecords(kv)
+  return json({ ok: true, records })
+}
+
+export async function onRequestPost(context) {
+  const denied = await requireAccess(context)
+  if (denied) return denied
+  const { request } = context
+  const body = await readJson(request)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
+  const userId = getUserId(request, body)
+  const record = cleanRecord(body.record || {})
+  if (!record.productId) return error('请选择商品资料', 400)
+  record.userId = userId
+  await kvPutJson(kv, recordKey(userId, record.id), record)
+  return json({ ok: true, record })
+}
+
+export async function onRequestPut(context) {
+  const denied = await requireAccess(context)
+  if (denied) return denied
+  const { request } = context
+  const body = await readJson(request)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
+  const userId = getUserId(request, body)
+  const incoming = cleanRecord(body.record || {})
+  if (!incoming.id) return error('缺少 id', 400)
+  const key = await findExistingRecordKey(kv, incoming.id, userId)
+  const old = await kvGetJson(kv, key)
+  const record = { ...(old || {}), ...incoming, userId: old?.userId || userId, createdAt: old?.createdAt || incoming.createdAt, updatedAt: new Date().toISOString() }
+  await kvPutJson(kv, key, record)
+  return json({ ok: true, record })
+}
+
+export async function onRequestDelete(context) {
+  const denied = await requireAccess(context)
+  if (denied) return denied
+  const { request } = context
+  const body = await readJson(request)
+  const { kv, response: kvError } = requireKV(context)
+  if (kvError) return kvError
+  const userId = getUserId(request, body)
+  const id = safeId(body.id || '')
+  if (!id) return error('缺少 id', 400)
+  const key = await findExistingRecordKey(kv, id, userId)
+  await kv.delete(key)
+  return json({ ok: true })
+}

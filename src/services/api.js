@@ -1,11 +1,6 @@
 const USER_ID_KEY = 'expiry_ledger_user_id'
 const ACCESS_TOKEN_KEY = 'expiry_ledger_access_token'
 
-function uid() {
-  const random = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random()}`
-  return `u_${random.replace(/[^a-zA-Z0-9]/g, '_')}`
-}
-
 export function getUserId() {
   let id = localStorage.getItem(USER_ID_KEY)
   if (!id) {
@@ -37,14 +32,11 @@ export function clearAccessToken() {
 async function request(path, options = {}) {
   const token = getAccessToken()
   const headers = {
-    'Content-Type': 'application/json',
+    ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {})
   }
-  const res = await fetch(path, {
-    ...options,
-    headers
-  })
+  const res = await fetch(path, { ...options, headers })
   const text = await res.text()
   let data = null
   try { data = text ? JSON.parse(text) : null } catch { data = text }
@@ -69,26 +61,29 @@ export const api = {
     if (data?.token) setAccessToken(data.token, remember)
     return data
   },
-  listItems() {
-    return request(withUser('/api/items'))
+  listProducts() {
+    return request(withUser('/api/products'))
   },
-  createItem(item) {
-    return request('/api/items', { method: 'POST', body: JSON.stringify({ userId: getUserId(), item }) })
+  createProduct(product) {
+    return request('/api/products', { method: 'POST', body: JSON.stringify({ userId: getUserId(), product }) })
   },
-  updateItem(item) {
-    return request('/api/items', { method: 'PUT', body: JSON.stringify({ userId: getUserId(), item }) })
+  updateProduct(product) {
+    return request('/api/products', { method: 'PUT', body: JSON.stringify({ userId: getUserId(), product }) })
   },
-  deleteItem(id) {
-    return request('/api/items', { method: 'DELETE', body: JSON.stringify({ userId: getUserId(), id }) })
+  deleteProduct(id) {
+    return request('/api/products', { method: 'DELETE', body: JSON.stringify({ userId: getUserId(), id }) })
   },
-  listTemplates() {
-    return request(withUser('/api/templates'))
+  listRecords() {
+    return request(withUser('/api/records'))
   },
-  saveTemplate(template) {
-    return request('/api/templates', { method: 'POST', body: JSON.stringify({ userId: getUserId(), template }) })
+  createRecord(record) {
+    return request('/api/records', { method: 'POST', body: JSON.stringify({ userId: getUserId(), record }) })
   },
-  deleteTemplate(id) {
-    return request('/api/templates', { method: 'DELETE', body: JSON.stringify({ userId: getUserId(), id }) })
+  updateRecord(record) {
+    return request('/api/records', { method: 'PUT', body: JSON.stringify({ userId: getUserId(), record }) })
+  },
+  deleteRecord(id) {
+    return request('/api/records', { method: 'DELETE', body: JSON.stringify({ userId: getUserId(), id }) })
   },
   getSettings() {
     return request(withUser('/api/settings'))
@@ -104,5 +99,21 @@ export const api = {
   },
   runNotify() {
     return request('/api/notify/run', { method: 'POST', body: JSON.stringify({ manual: true }) })
+  },
+  getQiniuUploadToken({ filename, contentType }) {
+    return request('/api/upload/qiniu-token', { method: 'POST', body: JSON.stringify({ userId: getUserId(), filename, contentType }) })
+  },
+  async uploadImageToQiniu(file) {
+    const info = await this.getQiniuUploadToken({ filename: file.name, contentType: file.type })
+    const form = new FormData()
+    form.append('token', info.token)
+    form.append('key', info.key)
+    form.append('file', file)
+    const res = await fetch(info.uploadUrl, { method: 'POST', body: form })
+    const text = await res.text()
+    let data = null
+    try { data = text ? JSON.parse(text) : null } catch { data = text }
+    if (!res.ok) throw new Error(data?.error || data?.message || `图片上传失败：${res.status}`)
+    return { ...data, url: info.publicUrl, key: info.key }
   }
 }

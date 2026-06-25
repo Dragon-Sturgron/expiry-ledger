@@ -1,26 +1,26 @@
 import { getEnv } from './shared.js'
 
-export function wxConfig(context) {
+export function wxConfig(context, settings = {}) {
   return {
-    appid: getEnv(context, 'WX_APPID'),
-    secret: getEnv(context, 'WX_SECRET'),
-    templateId: getEnv(context, 'WX_TEMPLATE_ID'),
-    siteUrl: getEnv(context, 'SITE_URL')
+    appid: settings.wxAppid || getEnv(context, 'WX_APPID'),
+    secret: settings.wxSecret || getEnv(context, 'WX_SECRET'),
+    templateId: settings.wxTemplateId || getEnv(context, 'WX_TEMPLATE_ID'),
+    siteUrl: settings.siteUrl || getEnv(context, 'SITE_URL')
   }
 }
 
-export async function getOfficialAccessToken(context, kv) {
-  const cached = await kv.get('wx_access_token', { type: 'json' })
+export async function getOfficialAccessToken(context, kv, cfg = wxConfig(context)) {
+  const cacheKey = `wx_access_token_${String(cfg.appid || 'default').replace(/[^a-zA-Z0-9_]/g, '_')}`
+  const cached = await kv.get(cacheKey, { type: 'json' })
   const now = Date.now()
   if (cached?.token && cached?.expiresAt && cached.expiresAt > now + 60_000) return cached.token
 
-  const cfg = wxConfig(context)
-  if (!cfg.appid || !cfg.secret) throw new Error('缺少 WX_APPID 或 WX_SECRET')
+  if (!cfg.appid || !cfg.secret) throw new Error('请先在设置里配置公众号 AppID 和 AppSecret')
   const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(cfg.appid)}&secret=${encodeURIComponent(cfg.secret)}`
   const res = await fetch(url)
   const data = await res.json()
   if (!data.access_token) throw new Error(data.errmsg || '获取公众号 access_token 失败')
-  await kv.put('wx_access_token', JSON.stringify({ token: data.access_token, expiresAt: now + (Number(data.expires_in || 7200) - 300) * 1000 }))
+  await kv.put(cacheKey, JSON.stringify({ token: data.access_token, expiresAt: now + (Number(data.expires_in || 7200) - 300) * 1000 }))
   return data.access_token
 }
 
@@ -54,10 +54,10 @@ export function buildTemplateData(item, statusLabel, daysText) {
   }
 }
 
-export async function sendTemplateMessage(context, kv, { openid, item, statusLabel, daysText }) {
-  const cfg = wxConfig(context)
-  if (!cfg.templateId) throw new Error('缺少 WX_TEMPLATE_ID')
-  const token = await getOfficialAccessToken(context, kv)
+export async function sendTemplateMessage(context, kv, { openid, item, statusLabel, daysText, settings = {} }) {
+  const cfg = wxConfig(context, settings)
+  if (!cfg.templateId) throw new Error('请先在设置里配置公众号模板ID')
+  const token = await getOfficialAccessToken(context, kv, cfg)
   const url = `https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${encodeURIComponent(token)}`
   const body = {
     touser: openid,

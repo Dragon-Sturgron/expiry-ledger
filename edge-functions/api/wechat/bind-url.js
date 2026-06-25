@@ -11,8 +11,9 @@ export async function onRequestGet(context) {
   if (kvError) return kvError
   const userId = getUserId(request)
   if (!userId) return error('缺少 userId', 400)
-  const cfg = wxConfig(context)
-  if (!cfg.appid || !cfg.secret || !cfg.siteUrl) return error('缺少 WX_APPID、WX_SECRET 或 SITE_URL，请先在 Makers 环境变量中配置', 500)
+  const settings = await getStoredSettings(kv, userId)
+  const cfg = wxConfig(context, settings)
+  if (!cfg.appid || !cfg.secret || !cfg.siteUrl) return error('请先在「设置 → 微信公众号通知」里配置 AppID、AppSecret 和网站域名，并保存设置。', 500)
   const state = safeId(newId('state'))
   await kv.put(`oauthstate_${state}`, JSON.stringify({ userId, createdAt: Date.now(), expireAt: Date.now() + 10 * 60 * 1000 }))
   const redirectUri = `${cfg.siteUrl.replace(/\/$/, '')}/api/wechat/callback`
