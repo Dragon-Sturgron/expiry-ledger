@@ -134,3 +134,30 @@ dt { color: #8a94a5; } dd { margin: 0; word-break: break-all; }
 .remember-line input { width: 16px; height: 16px; }
 .access-error { color: var(--danger) !important; font-size: 13px; }
 @media (min-width: 415px) { .phone-shell { min-height: 812px; margin-top: 12px; border-radius: 10px; } }
+
+
+.user-card { background: #fff; border-radius: 12px; margin: 0 8px 12px; padding: 16px; display: flex; align-items: center; gap: 12px; }
+.user-card .avatar { width: 54px; height: 54px; border-radius: 50%; background: #e9fbf5; display: grid; place-items: center; font-size: 28px; }
+.user-card strong { font-size: 17px; }
+.user-card p { margin: 4px 0 0; color: #8a94a5; font-size: 13px; }
+.settings-grid { background: #fff; margin: 0 8px 12px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); }
+.settings-grid button { min-height: 82px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); color: #303948; }
+.settings-grid button:nth-child(3n) { border-right: 0; }
+.settings-grid button:nth-child(n+4) { border-bottom: 0; }
+.settings-grid .icon { font-size: 24px; line-height: 1; }
+.settings-grid .green { color: #27c79a; }
+.settings-grid .orange { color: #ffb020; }
+.settings-grid .blue { color: #2388f2; }
+.settings-grid .red { color: #fa5151; }
+.settings-grid .purple { color: #d946ef; }
+.settings-grid .teal { color: #10b981; }
+.setting-list { background: #fff; margin: 0 8px; }
+.setting-row { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--line); color: #172033; text-align: left; }
+.setting-row em { color: #9aa4b2; font-style: normal; }
+.page-primary { margin: 18px 8px 0; width: calc(100% - 16px); }
+.danger-tip { color: #fa5151; margin: 4px 8px 14px; font-size: 14px; }
+.export-form select { flex: 1; border: 0; outline: 0; background: transparent; text-align: right; direction: rtl; color: #98a2b3; font: inherit; min-width: 0; }
+.export-form select option { direction: ltr; color: #172033; }
+.export-form input[type="date"] { color: #98a2b3; }
+.export-btn { margin: 18px 8px 0; width: calc(100% - 16px); min-height: 48px; font-size: 16px; }
+.admin-page .page-header { margin-bottom: 14px; }

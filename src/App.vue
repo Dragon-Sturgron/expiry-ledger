@@ -4,7 +4,9 @@ import { api, clearAccessToken, getUserId, resetUserId } from './services/api'
 import { addDuration, describeDays, diffDays, formatDate, getStatus } from './utils/date'
 
 const today = formatDate()
-const screen = ref('home')
+const ADMIN_PATH = '/admin'
+const isAdminPath = location.pathname.replace(/\/+$/, '') === ADMIN_PATH
+const screen = ref(isAdminPath ? 'adminSettings' : 'home')
 const loading = ref(false)
 const toast = ref('')
 const query = ref('')
@@ -44,6 +46,14 @@ const settings = reactive({
   wxSecret: '',
   wxTemplateId: '',
   siteUrl: ''
+})
+
+const exportFilter = reactive({
+  status: '',
+  category: '',
+  tag: '',
+  startDate: '',
+  endDate: ''
 })
 
 const productForm = reactive(emptyProduct())
@@ -168,7 +178,10 @@ async function loadAll() {
 
 onMounted(async () => {
   await initAuth()
-  if (auth.authed) await loadAll()
+  if (auth.authed) {
+    await loadAll()
+    if (isAdminPath) screen.value = 'adminSettings'
+  }
   const params = new URLSearchParams(location.search)
   if (params.get('wechat') === 'bound') {
     showToast('微信绑定成功')
@@ -234,6 +247,31 @@ const categoryRows = computed(() => {
   const map = new Map()
   products.value.forEach(p => map.set(p.category || '未分类', (map.get(p.category || '未分类') || 0) + 1))
   return Array.from(map.entries()).map(([name, count]) => ({ name, count }))
+})
+
+const tagRows = computed(() => {
+  const map = new Map()
+  products.value.forEach(p => (p.tags || []).forEach(tag => map.set(tag, (map.get(tag) || 0) + 1)))
+  return Array.from(map.entries()).map(([name, count]) => ({ name, count }))
+})
+
+const exportRows = computed(() => {
+  return recordCards.value.filter(({ record, product }) => {
+    const status = getStatus(record, Number(settings.nearDays) || 30).key
+    if (exportFilter.status === 'warning') {
+      if (!(Number(record.quantity) <= Number(record.warningQty || 0) && Number(record.warningQty || 0) > 0)) return false
+    } else if (exportFilter.status === 'invalid') {
+      if (!(Number(record.quantity) <= 0)) return false
+    } else if (exportFilter.status && status !== exportFilter.status) {
+      return false
+    }
+    if (exportFilter.category && (product.category || '') !== exportFilter.category) return false
+    if (exportFilter.tag && !(product.tags || []).includes(exportFilter.tag)) return false
+    const recordDate = record.startDate || record.createdAt?.slice(0, 10) || ''
+    if (exportFilter.startDate && recordDate < exportFilter.startDate) return false
+    if (exportFilter.endDate && recordDate > exportFilter.endDate) return false
+    return true
+  })
 })
 
 const todoRows = computed(() => {
@@ -428,6 +466,63 @@ async function removeRecord(record) {
   } catch (e) {
     showToast(e.message)
   }
+}
+
+
+function openPublicHome() {
+  location.href = '/'
+}
+
+function openAdminSettings() {
+  location.href = ADMIN_PATH + '/'
+}
+
+function statusText(record) {
+  const status = getStatus(record, Number(settings.nearDays) || 30).key
+  const base = { normal: '正常', expiring: '临期', expired: '过期', unknown: '未知' }[status] || '未知'
+  if (Number(record.quantity) <= 0) return '无效量'
+  if (Number(record.quantity) <= Number(record.warningQty || 0) && Number(record.warningQty || 0) > 0) return '数量预警'
+  return base
+}
+
+function csvCell(value) {
+  const text = String(value ?? '').replace(/"/g, '""')
+  return `"${text}"`
+}
+
+function exportRecordsCsv() {
+  const rows = exportRows.value
+  if (!rows.length) {
+    showToast('没有符合条件的记录')
+    return
+  }
+  const header = ['商品名称', '物品状态', '分类', '标签', '数量', '数量预警', '记录日期', '到期日期', '剩余时间', '存放位置', '备注']
+  const lines = [header.map(csvCell).join(',')]
+  rows.forEach(({ record, product }) => {
+    lines.push([
+      product.name || '未命名商品',
+      statusText(record),
+      product.category || '',
+      (product.tags || []).join('，'),
+      record.quantity ?? '',
+      record.warningQty ?? '',
+      record.startDate || '',
+      record.expiryDate || '',
+      describeDays(diffDays(record.expiryDate)),
+      record.location || '',
+      record.remark || ''
+    ].map(csvCell).join(','))
+  })
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `临期账本导出_${formatDate()}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  showToast(`已导出 ${rows.length} 条记录`)
 }
 
 async function saveSettings() {
@@ -633,7 +728,7 @@ async function stopScanner() {
         <div class="bottom-actions">
           <button @click="openProductForm()">＋商品</button>
           <button @click="openRecordForm()">＋效期</button>
-          <button @click="screen='settings'">⚙设置</button>
+          <button @click="screen='userSettings'">⚙设置</button>
         </div>
       </section>
 
@@ -743,17 +838,126 @@ async function stopScanner() {
         </article>
       </section>
 
-      <section v-if="screen === 'settings'" class="page settings-page">
+      <section v-if="screen === 'userSettings'" class="page settings-page">
         <header class="page-header">
           <button class="back-btn" @click="backHome" aria-label="返回">←</button>
           <strong class="page-title">设置</strong>
           <span class="header-placeholder"></span>
         </header>
+
+        <div class="user-card">
+          <div class="avatar">⏳</div>
+          <div>
+            <strong>临期账本</strong>
+            <p>商品资料 + 效期记录</p>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <button @click="screen='basicSettings'">
+            <b class="icon green">🔔</b>
+            <span>提醒设置</span>
+          </button>
+          <button @click="screen='basicSettings'">
+            <b class="icon orange">⚙️</b>
+            <span>临期配置</span>
+          </button>
+          <button @click="showToast('模板库后续可扩展')">
+            <b class="icon blue">📋</b>
+            <span>模板库</span>
+          </button>
+          <button @click="showToast('操作记录后续可扩展')">
+            <b class="icon red">📜</b>
+            <span>操作记录</span>
+          </button>
+          <button @click="showToast('数据导入后续可扩展')">
+            <b class="icon purple">☰</b>
+            <span>数据导入</span>
+          </button>
+          <button @click="screen='exportRecords'">
+            <b class="icon teal">☷</b>
+            <span>数据导出</span>
+          </button>
+        </div>
+
+        <div class="setting-list">
+          <button class="setting-row" @click="screen='basicSettings'">
+            <span>临期天数与提醒时间</span><em>›</em>
+          </button>
+          <button class="setting-row" @click="screen='exportRecords'">
+            <span>数据导出</span><em>›</em>
+          </button>
+          <button class="setting-row" @click="loadAll">
+            <span>刷新同步</span><em>›</em>
+          </button>
+          <button class="setting-row" @click="openAdminSettings">
+            <span>后台配置</span><em>/admin ›</em>
+          </button>
+        </div>
+      </section>
+
+      <section v-if="screen === 'basicSettings'" class="page settings-page">
+        <header class="page-header">
+          <button class="back-btn" @click="screen='userSettings'" aria-label="返回">←</button>
+          <strong class="page-title">提醒与临期</strong>
+          <span class="header-placeholder"></span>
+        </header>
         <div class="card form-card">
           <label><span>临期天数</span><input type="number" v-model.number="settings.nearDays" placeholder="默认30"></label>
-          <label><span>默认提前提醒</span><input type="number" v-model.number="settings.defaultRemindDays" placeholder="默认3"></label>
+          <label><span>默认提醒时间</span><input type="number" v-model.number="settings.defaultRemindDays" placeholder="提前提醒天数"></label>
           <label><span>默认分类</span><input v-model="settings.defaultCategory" placeholder="可留空"></label>
-          <label><span>弹框点空白关闭</span><label class="switch"><input type="checkbox" v-model="settings.autoCloseDialog"><i></i></label></label>
+        </div>
+        <button class="primary wide page-primary" @click="saveSettings">保存设置</button>
+      </section>
+
+      <section v-if="screen === 'exportRecords'" class="page settings-page export-page">
+        <header class="page-header">
+          <button class="back-btn" @click="screen='userSettings'" aria-label="返回">←</button>
+          <strong class="page-title">数据导出</strong>
+          <span class="header-placeholder"></span>
+        </header>
+        <p class="danger-tip">不填默认导出全部</p>
+        <div class="card form-card export-form">
+          <label>
+            <span>物品状态</span>
+            <select v-model="exportFilter.status">
+              <option value="">非必填</option>
+              <option value="normal">正常</option>
+              <option value="expiring">临期</option>
+              <option value="expired">过期</option>
+              <option value="warning">数量预警</option>
+              <option value="invalid">无效量</option>
+            </select>
+          </label>
+          <label>
+            <span>分类</span>
+            <select v-model="exportFilter.category">
+              <option value="">非必填</option>
+              <option v-for="row in categoryRows" :key="row.name" :value="row.name">{{ row.name }}</option>
+            </select>
+          </label>
+          <label>
+            <span>标签</span>
+            <select v-model="exportFilter.tag">
+              <option value="">非必填</option>
+              <option v-for="row in tagRows" :key="row.name" :value="row.name">{{ row.name }}</option>
+            </select>
+          </label>
+          <label><span>记录开始日期</span><input type="date" v-model="exportFilter.startDate" placeholder="非必填"></label>
+          <label><span>记录结束日期</span><input type="date" v-model="exportFilter.endDate" placeholder="非必填"></label>
+        </div>
+        <button class="primary wide export-btn" @click="exportRecordsCsv">↓ 确认导出</button>
+      </section>
+
+      <section v-if="screen === 'adminSettings'" class="page settings-page admin-page">
+        <header class="page-header">
+          <button class="back-btn" @click="openPublicHome" aria-label="返回">←</button>
+          <strong class="page-title">后台配置</strong>
+          <span class="header-placeholder"></span>
+        </header>
+        <div class="card wx-card">
+          <h3>访问路径</h3>
+          <p class="hint">当前页面用于后台配置，访问地址为 <b>/admin/</b>。纯域名首页的设置仅保留临期、提醒和导出。</p>
         </div>
 
         <div class="card wx-card">
@@ -780,7 +984,7 @@ async function stopScanner() {
           <label><span>网站域名</span><input v-model="settings.siteUrl" placeholder="https://你的访问域名"></label>
         </div>
         <div class="card wx-card">
-          <button class="primary wide" @click="saveSettings">保存图片/微信配置</button>
+          <button class="primary wide" @click="saveSettings">保存后台配置</button>
           <button class="ghost wide" @click="bindWechat">绑定微信</button>
           <button class="ghost wide" @click="manualNotify">手动执行一次通知检查</button>
         </div>
@@ -792,8 +996,6 @@ async function stopScanner() {
           <button v-if="auth.required" class="ghost wide" @click="logoutAccess">退出访问</button>
           <button class="ghost wide" @click="resetUserId(); showToast('已恢复默认用户ID'); loadAll()">恢复默认用户ID</button>
         </div>
-
-        <button class="primary wide" @click="saveSettings">保存设置</button>
       </section>
 
       <div v-if="scannerVisible" class="modal-mask" @click.self="settings.autoCloseDialog && stopScanner()">
