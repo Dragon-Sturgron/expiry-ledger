@@ -21,6 +21,8 @@ const scannerVisible = ref(false)
 const scannerInstance = ref(null)
 const scannerTarget = ref('query')
 const scannerTip = ref('')
+const recordProductKeyword = ref('')
+const categoryText = ref('')
 const wechatStatus = ref({ bound: false })
 
 const auth = reactive({
@@ -36,6 +38,7 @@ const settings = reactive({
   nearDays: 30,
   defaultRemindDays: 3,
   defaultCategory: '',
+  categories: [],
   autoCloseDialog: false,
   qiniuAccessKey: '',
   qiniuSecretKey: '',
@@ -106,6 +109,25 @@ function executeSearch() {
   if (document?.activeElement?.blur) document.activeElement.blur()
 }
 
+function splitLines(text) {
+  return String(text || '')
+    .split(/[\n，,]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+function uniqueList(list) {
+  return Array.from(new Set((list || []).map(s => String(s || '').trim()).filter(Boolean)))
+}
+
+function syncCategoryTextFromSettings() {
+  categoryText.value = uniqueList(settings.categories || []).join('\n')
+}
+
+function syncSettingsCategoriesFromText() {
+  settings.categories = uniqueList(splitLines(categoryText.value)).slice(0, 80)
+}
+
 async function initAuth() {
   auth.checking = true
   auth.error = ''
@@ -169,7 +191,11 @@ async function loadAll() {
     if (recordRes.status === 'fulfilled') records.value = recordRes.value.records || []
     else showToast(recordRes.reason?.message || '效期记录加载失败')
 
-    if (settingRes.status === 'fulfilled') Object.assign(settings, settingRes.value.settings || {})
+    if (settingRes.status === 'fulfilled') {
+      Object.assign(settings, settingRes.value.settings || {})
+      settings.categories = uniqueList(settings.categories || [])
+      syncCategoryTextFromSettings()
+    }
     if (wxRes.status === 'fulfilled') wechatStatus.value = wxRes.value
   } finally {
     loading.value = false
@@ -249,6 +275,26 @@ const categoryRows = computed(() => {
   return Array.from(map.entries()).map(([name, count]) => ({ name, count }))
 })
 
+const configuredCategories = computed(() => {
+  return uniqueList([
+    ...(settings.categories || []),
+    ...categoryRows.value.map(row => row.name).filter(name => name !== '未分类')
+  ])
+})
+
+const recordProductSearchResults = computed(() => {
+  const key = recordProductKeyword.value.trim().toLowerCase()
+  const list = [...products.value].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hans-CN'))
+  if (!key) return list.slice(0, 12)
+  return list.filter(p => [
+    p.name,
+    p.category,
+    p.barcode,
+    p.remark,
+    ...(p.tags || [])
+  ].filter(Boolean).join(' ').toLowerCase().includes(key)).slice(0, 20)
+})
+
 const tagRows = computed(() => {
   const map = new Map()
   products.value.forEach(p => (p.tags || []).forEach(tag => map.set(tag, (map.get(tag) || 0) + 1)))
@@ -296,7 +342,7 @@ function updateProductTags() {
 }
 
 function applyEmptyProduct() {
-  Object.assign(productForm, emptyProduct(), { category: settings.defaultCategory || '' })
+  Object.assign(productForm, emptyProduct(), { category: settings.defaultCategory || configuredCategories.value[0] || '' })
   editingProductId.value = ''
 }
 
@@ -305,6 +351,7 @@ function applyEmptyRecord(product = null) {
     remindDays: Number(settings.defaultRemindDays) || 3,
     productId: product?.id || ''
   })
+  recordProductKeyword.value = ''
   editingRecordId.value = ''
   if (product) applyProductToRecord(product)
 }
@@ -323,6 +370,7 @@ function openRecordForm(record = null, product = null) {
   if (record) {
     editingRecordId.value = record.id
     Object.assign(recordForm, JSON.parse(JSON.stringify(record)))
+    syncRecordProductKeyword()
   }
   screen.value = 'recordForm'
 }
@@ -344,9 +392,25 @@ function backHome() {
   stopScanner()
 }
 
+function productDisplayName(product) {
+  if (!product) return ''
+  return [product.name, product.barcode ? `条码：${product.barcode}` : '无条码', product.category || '未分类'].filter(Boolean).join(' / ')
+}
+
+function syncRecordProductKeyword() {
+  const product = productMap.value.get(recordForm.productId)
+  recordProductKeyword.value = product ? productDisplayName(product) : ''
+}
+
+function selectProductForRecord(product) {
+  if (!product) return
+  applyProductToRecord(product)
+}
+
 function applyProductToRecord(product = productMap.value.get(recordForm.productId)) {
   if (!product) return
   recordForm.productId = product.id
+  recordProductKeyword.value = productDisplayName(product)
   if (!recordForm.shelfLifeValue && product.defaultShelfLifeValue) recordForm.shelfLifeValue = product.defaultShelfLifeValue
   if (product.defaultShelfLifeUnit) recordForm.shelfLifeUnit = product.defaultShelfLifeUnit
 }
@@ -527,7 +591,9 @@ function exportRecordsCsv() {
 
 async function saveSettings() {
   try {
+    syncSettingsCategoriesFromText()
     await api.saveSettings({ ...settings })
+    syncCategoryTextFromSettings()
     showToast('设置已保存')
   } catch (e) {
     showToast(e.message)
@@ -600,11 +666,11 @@ async function startScanner(target = 'query') {
         } else if (scannerTarget.value === 'recordProduct') {
           const product = findProductByBarcode(decodedText)
           if (product) {
-            applyProductToRecord(product)
+            selectProductForRecord(product)
             showToast('已匹配商品资料')
           } else {
-            query.value = decodedText
-            showToast('未匹配商品，可先添加商品资料')
+            recordProductKeyword.value = decodedText
+            showToast('未匹配商品，可输入名称搜索或先添加商品资料')
           }
         } else {
           query.value = decodedText
@@ -743,9 +809,13 @@ async function stopScanner() {
         <div class="card form-card">
           <label><span class="required">*商品名称</span><input v-model="productForm.name" placeholder="请输入商品名称"></label>
           <label><span class="required">*分类</span><input v-model="productForm.category" list="category-list" placeholder="请选择或输入分类"></label>
-          <datalist id="category-list"><option v-for="row in categoryRows" :key="row.name" :value="row.name" /></datalist>
+          <datalist id="category-list"><option v-for="name in configuredCategories" :key="name" :value="name" /></datalist>
           <label><span>条形码/二维码</span><input v-model="productForm.barcode" placeholder="请输入"><button class="scan-btn" @click.prevent="startScanner('productBarcode')">扫码</button></label>
           <label class="photo-line"><span>图片<small>七牛云/链接</small></span><input v-model="productForm.imageUrl" placeholder="图片链接"><label class="upload-btn">上传<input type="file" accept="image/*" @change="handleProductImage"></label></label>
+          <div v-if="productForm.imageUrl" class="image-preview-card">
+            <div class="thumb preview" :style="{ backgroundImage: `url(${productForm.imageUrl})` }"></div>
+            <span>图片预览</span>
+          </div>
           <label><span>标签</span><input v-model="productForm.tagText" placeholder="多个用逗号分隔" @blur="updateProductTags"></label>
           <label class="period"><span>默认保质期</span><input type="number" v-model="productForm.defaultShelfLifeValue" placeholder="请输入"><div class="units"><button :class="{on:productForm.defaultShelfLifeUnit==='day'}" @click.prevent="productForm.defaultShelfLifeUnit='day'">天</button><button :class="{on:productForm.defaultShelfLifeUnit==='month'}" @click.prevent="productForm.defaultShelfLifeUnit='month'">月</button><button :class="{on:productForm.defaultShelfLifeUnit==='year'}" @click.prevent="productForm.defaultShelfLifeUnit='year'">年</button></div></label>
           <label><span>备注</span><input v-model="productForm.remark" placeholder="请输入备注"></label>
@@ -771,8 +841,20 @@ async function stopScanner() {
 
         <p class="section-title">引用商品资料</p>
         <div class="card form-card">
-          <label><span class="required">*商品</span><select v-model="recordForm.productId" @change="applyProductToRecord()"><option value="">请选择商品资料</option><option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} / {{ p.barcode || '无条码' }}</option></select></label>
-          <label v-if="productMap.get(recordForm.productId)"><span>商品图片</span><div class="inline-product"><div class="thumb tiny" :style="productMap.get(recordForm.productId).imageUrl ? { backgroundImage: `url(${productMap.get(recordForm.productId).imageUrl})` } : {}"></div><b>{{ productMap.get(recordForm.productId).category }}</b></div></label>
+          <div class="product-search-block">
+            <label><span class="required">*商品</span><input v-model="recordProductKeyword" placeholder="输入商品名称、条码、分类搜索"></label>
+            <div class="product-search-results">
+              <button v-for="p in recordProductSearchResults" :key="p.id" :class="{ selected: p.id === recordForm.productId }" @click.prevent="selectProductForRecord(p)">
+                <div class="thumb tiny" :style="p.imageUrl ? { backgroundImage: `url(${p.imageUrl})` } : {}"><span v-if="!p.imageUrl">📷</span></div>
+                <div>
+                  <strong>{{ p.name }}</strong>
+                  <small>{{ p.category || '未分类' }} · {{ p.barcode || '无条码' }}</small>
+                </div>
+              </button>
+              <div v-if="!recordProductSearchResults.length" class="empty mini">没有找到商品资料，可点击上方“新增商品”</div>
+            </div>
+          </div>
+          <label v-if="productMap.get(recordForm.productId)"><span>已选商品</span><div class="inline-product"><div class="thumb tiny" :style="productMap.get(recordForm.productId).imageUrl ? { backgroundImage: `url(${productMap.get(recordForm.productId).imageUrl})` } : {}"></div><b>{{ productMap.get(recordForm.productId).category || '未分类' }}</b></div></label>
         </div>
 
         <p class="section-title">效期信息</p>
@@ -866,9 +948,9 @@ async function stopScanner() {
             <b class="icon blue">📋</b>
             <span>模板库</span>
           </button>
-          <button @click="showToast('操作记录后续可扩展')">
-            <b class="icon red">📜</b>
-            <span>操作记录</span>
+          <button @click="screen='categorySettings'">
+            <b class="icon red">🏷️</b>
+            <span>分类配置</span>
           </button>
           <button @click="showToast('数据导入后续可扩展')">
             <b class="icon purple">☰</b>
@@ -883,6 +965,9 @@ async function stopScanner() {
         <div class="setting-list">
           <button class="setting-row" @click="screen='basicSettings'">
             <span>临期天数与提醒时间</span><em>›</em>
+          </button>
+          <button class="setting-row" @click="screen='categorySettings'">
+            <span>分类配置</span><em>›</em>
           </button>
           <button class="setting-row" @click="screen='exportRecords'">
             <span>数据导出</span><em>›</em>
@@ -908,6 +993,26 @@ async function stopScanner() {
           <label><span>默认分类</span><input v-model="settings.defaultCategory" placeholder="可留空"></label>
         </div>
         <button class="primary wide page-primary" @click="saveSettings">保存设置</button>
+      </section>
+
+      <section v-if="screen === 'categorySettings'" class="page settings-page">
+        <header class="page-header">
+          <button class="back-btn" @click="screen='userSettings'" aria-label="返回">←</button>
+          <strong class="page-title">分类配置</strong>
+          <span class="header-placeholder"></span>
+        </header>
+        <div class="card wx-card">
+          <h3>商品分类</h3>
+          <p class="hint">每行一个分类。添加商品时可直接选择，也可以手动输入新分类。</p>
+        </div>
+        <div class="card form-card">
+          <label class="textarea-line"><span>分类列表</span><textarea v-model="categoryText" placeholder="例如：食品\n药品\n日用品\n护肤品"></textarea></label>
+          <label>
+            <span>默认分类</span>
+            <input v-model="settings.defaultCategory" list="category-list" placeholder="可留空">
+          </label>
+        </div>
+        <button class="primary wide page-primary" @click="saveSettings">保存分类配置</button>
       </section>
 
       <section v-if="screen === 'exportRecords'" class="page settings-page export-page">

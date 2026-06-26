@@ -6,6 +6,7 @@ const DEFAULT_SETTINGS = {
   nearDays: 30,
   defaultRemindDays: 3,
   defaultCategory: '',
+  categories: [],
   autoCloseDialog: false,
   qiniuAccessKey: '',
   qiniuSecretKey: '',
@@ -23,6 +24,9 @@ function cleanSettings(s = {}) {
     nearDays: Math.max(1, Math.min(3650, Number(s.nearDays || 30))),
     defaultRemindDays: Math.max(0, Math.min(3650, Number(s.defaultRemindDays || 3))),
     defaultCategory: String(s.defaultCategory || '').slice(0, 40),
+    categories: Array.isArray(s.categories)
+      ? Array.from(new Set(s.categories.map(x => String(x || '').trim()).filter(Boolean))).slice(0, 80)
+      : [],
     autoCloseDialog: Boolean(s.autoCloseDialog),
     qiniuAccessKey: String(s.qiniuAccessKey || '').trim().slice(0, 200),
     qiniuSecretKey: String(s.qiniuSecretKey || '').trim().slice(0, 200),
