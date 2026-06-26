@@ -112,11 +112,20 @@ function executeSearch() {
 }
 
 function imageSrc(url) {
-  const src = String(url || '').trim()
-  if (!src) return ''
-  if (/^(data:|blob:|\/api\/image\/proxy|\/assets\/|\.\/|\.\.)/i.test(src)) return src
-  if (/^https?:\/\//i.test(src)) return `/api/image/proxy?url=${encodeURIComponent(src)}`
-  return src
+  return String(url || '').trim()
+}
+
+function imageProxySrc(url) {
+  const src = imageSrc(url)
+  if (!src || !/^https?:\/\//i.test(src)) return src
+  return `/api/image/proxy?url=${encodeURIComponent(src)}`
+}
+
+function fallbackImage(event, url) {
+  const img = event?.target
+  if (!img || img.dataset.fallback === '1') return
+  img.dataset.fallback = '1'
+  img.src = imageProxySrc(url)
 }
 
 function imageStyle(url) {
@@ -910,7 +919,7 @@ async function stopScanner() {
           <label><span>条形码/二维码</span><input v-model="productForm.barcode" placeholder="请输入"><button class="scan-btn" @click.prevent="startScanner('productBarcode')">扫码</button></label>
           <label class="photo-line"><span>图片<small>七牛云/链接</small></span><input v-model="productForm.imageUrl" placeholder="图片链接"><label class="upload-btn">上传<input type="file" accept="image/*" @change="handleProductImage"></label></label>
           <div v-if="productForm.imageUrl" class="image-preview-card">
-            <img :src="imageSrc(productForm.imageUrl)" alt="图片预览" @error="showToast('图片链接无法加载，请检查链接是否允许外部访问')">
+            <img :src="imageSrc(productForm.imageUrl)" referrerpolicy="no-referrer" alt="图片预览" @error="fallbackImage($event, productForm.imageUrl)">
             <span>图片预览</span>
           </div>
           <label><span>标签</span><input v-model="productForm.tagText" placeholder="多个用逗号分隔" @blur="updateProductTags"></label>

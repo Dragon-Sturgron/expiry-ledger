@@ -23,7 +23,8 @@ export async function onRequestGet(context) {
       headers: {
         'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
         'User-Agent': 'Mozilla/5.0 ExpiryLedger Image Proxy',
-        'Referer': `${parsed.origin}/`
+        'Referer': target,
+        'Origin': parsed.origin
       }
     })
 
