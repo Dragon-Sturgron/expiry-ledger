@@ -24,6 +24,7 @@ const scannerTip = ref('')
 const recordProductKeyword = ref('')
 const categoryText = ref('')
 const categoryKeyword = ref('')
+const categoryBackScreen = ref('userSettings')
 const wechatStatus = ref({ bound: false })
 
 const auth = reactive({
@@ -111,7 +112,11 @@ function executeSearch() {
 }
 
 function imageSrc(url) {
-  return String(url || '').trim()
+  const src = String(url || '').trim()
+  if (!src) return ''
+  if (/^(data:|blob:|\/api\/image\/proxy|\/assets\/|\.\/|\.\.)/i.test(src)) return src
+  if (/^https?:\/\//i.test(src)) return `/api/image/proxy?url=${encodeURIComponent(src)}`
+  return src
 }
 
 function imageStyle(url) {
@@ -607,6 +612,44 @@ function exportRecordsCsv() {
   showToast(`已导出 ${rows.length} 条记录`)
 }
 
+function openCategorySettings(back = 'userSettings') {
+  categoryBackScreen.value = back
+  categoryKeyword.value = ''
+  screen.value = 'categorySettings'
+}
+
+function closeCategorySettings() {
+  screen.value = categoryBackScreen.value || 'userSettings'
+}
+
+function chooseCategory(name) {
+  if (!name) return
+  productForm.category = name
+  if (categoryBackScreen.value === 'productForm') {
+    screen.value = 'productForm'
+  } else {
+    settings.defaultCategory = name
+  }
+}
+
+function addCategoryFromKeyword() {
+  const name = categoryKeyword.value.trim()
+  if (!name) {
+    showToast('请输入分类名称')
+    return
+  }
+  settings.categories = uniqueList([...(settings.categories || []), name]).slice(0, 80)
+  productForm.category = name
+  categoryKeyword.value = ''
+  syncCategoryTextFromSettings()
+  showToast('已添加分类，请点击保存')
+}
+
+async function saveCategorySettings() {
+  await saveSettings()
+  closeCategorySettings()
+}
+
 function addCategoryFromPrompt() {
   const name = prompt('请输入分类名称')
   if (!name) return
@@ -859,13 +902,10 @@ async function stopScanner() {
         <p class="section-title">商品资料</p>
         <div class="card form-card">
           <label><span class="required">*商品名称</span><input v-model="productForm.name" placeholder="请输入商品名称"></label>
-          <label class="category-select-line">
+          <label class="category-picker-line" @click.prevent="openCategorySettings('productForm')">
             <span class="required">*分类</span>
-            <select v-model="productForm.category">
-              <option value="">请选择分类</option>
-              <option v-for="name in configuredCategories" :key="name" :value="name">{{ name }}</option>
-            </select>
-            <button class="config-btn" @click.prevent="screen='categorySettings'">配置</button>
+            <button class="category-picker-value" @click.prevent="openCategorySettings('productForm')">{{ productForm.category || '请选择分类' }}</button>
+            <em>›</em>
           </label>
           <label><span>条形码/二维码</span><input v-model="productForm.barcode" placeholder="请输入"><button class="scan-btn" @click.prevent="startScanner('productBarcode')">扫码</button></label>
           <label class="photo-line"><span>图片<small>七牛云/链接</small></span><input v-model="productForm.imageUrl" placeholder="图片链接"><label class="upload-btn">上传<input type="file" accept="image/*" @change="handleProductImage"></label></label>
@@ -1005,7 +1045,7 @@ async function stopScanner() {
             <b class="icon blue">📋</b>
             <span>模板库</span>
           </button>
-          <button @click="screen='categorySettings'">
+          <button @click="openCategorySettings('userSettings')">
             <b class="icon red">🏷️</b>
             <span>分类配置</span>
           </button>
@@ -1023,7 +1063,7 @@ async function stopScanner() {
           <button class="setting-row" @click="screen='basicSettings'">
             <span>临期天数与提醒时间</span><em>›</em>
           </button>
-          <button class="setting-row" @click="screen='categorySettings'">
+          <button class="setting-row" @click="openCategorySettings('userSettings')">
             <span>分类配置</span><em>›</em>
           </button>
           <button class="setting-row" @click="screen='exportRecords'">
@@ -1057,7 +1097,7 @@ async function stopScanner() {
           <header class="category-panel-header">
             <span></span>
             <strong>分类</strong>
-            <button @click="screen='userSettings'" aria-label="关闭">×</button>
+            <button @click="closeCategorySettings" aria-label="关闭">×</button>
           </header>
 
           <div class="category-tools">
@@ -1073,19 +1113,19 @@ async function stopScanner() {
               v-for="name in filteredConfiguredCategories"
               :key="name"
               class="category-chip"
-              @click="settings.defaultCategory = name; productForm.category = productForm.category || name"
+              @click="chooseCategory(name)"
               @contextmenu.prevent="handleCategoryLongPress(name)"
               @dblclick="editCategory(name)"
-              :class="{ active: settings.defaultCategory === name }"
+              :class="{ active: productForm.category === name || settings.defaultCategory === name }"
             >{{ name }}</button>
-            <button class="category-add-chip" @click="addCategoryFromPrompt">＋ 添加分类</button>
+            <button class="category-add-chip" @click="addCategoryFromKeyword">＋ 添加分类</button>
           </div>
 
-          <p v-if="!filteredConfiguredCategories.length" class="empty">暂无分类，请点击“添加分类”</p>
+          <p v-if="!filteredConfiguredCategories.length" class="empty">暂无分类，可在搜索框输入后点击“添加分类”</p>
 
           <div class="category-panel-actions">
-            <button class="ghost" @click="screen='userSettings'">取消</button>
-            <button class="primary" @click="saveSettings">保存分类</button>
+            <button class="ghost" @click="closeCategorySettings">取消</button>
+            <button class="primary" @click="saveCategorySettings">保存分类</button>
           </div>
         </div>
       </section>
