@@ -925,9 +925,8 @@ async function stopScanner() {
           <button class="fab add" @click="products.length ? openRecordForm() : openProductForm()">＋</button>
         </div>
 
-        <div class="bottom-actions">
+        <div class="bottom-actions bottom-actions-two">
           <button @click="openProductForm()">＋商品</button>
-          <button @click="openRecordForm()">＋效期</button>
           <button @click="navigate('userSettings')">⚙设置</button>
         </div>
       </section>

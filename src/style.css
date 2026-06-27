@@ -282,3 +282,35 @@ dt { color: #8a94a5; } dd { margin: 0; word-break: break-all; }
     max-width: 390px !important;
   }
 }
+
+/* bottom action buttons: remove middle +效期 and keep labels on one line */
+.bottom-actions {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 12px !important;
+  flex-wrap: nowrap !important;
+}
+.bottom-actions button {
+  min-width: 82px !important;
+  height: 38px !important;
+  padding: 0 14px !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  line-height: 38px !important;
+  text-align: center !important;
+  flex: 0 0 auto !important;
+}
+.bottom-actions-two {
+  gap: 16px !important;
+}
+@media (max-width: 360px) {
+  .bottom-actions {
+    gap: 8px !important;
+  }
+  .bottom-actions button {
+    min-width: 74px !important;
+    padding: 0 10px !important;
+    font-size: 13px !important;
+  }
+}
