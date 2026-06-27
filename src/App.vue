@@ -22,6 +22,7 @@ const scannerInstance = ref(null)
 const scannerTarget = ref('query')
 const scannerTip = ref('')
 const recordProductKeyword = ref('')
+const productPickerVisible = ref(false)
 const categoryText = ref('')
 const categoryKeyword = ref('')
 const categoryBackScreen = ref('userSettings')
@@ -317,14 +318,14 @@ const filteredConfiguredCategories = computed(() => {
 const recordProductSearchResults = computed(() => {
   const key = recordProductKeyword.value.trim().toLowerCase()
   const list = [...products.value].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hans-CN'))
-  if (!key) return list.slice(0, 12)
+  if (!key) return []
   return list.filter(p => [
     p.name,
     p.category,
     p.barcode,
     p.remark,
     ...(p.tags || [])
-  ].filter(Boolean).join(' ').toLowerCase().includes(key)).slice(0, 20)
+  ].filter(Boolean).join(' ').toLowerCase().includes(key)).slice(0, 30)
 })
 
 const tagRows = computed(() => {
@@ -434,9 +435,20 @@ function syncRecordProductKeyword() {
   recordProductKeyword.value = product ? productDisplayName(product) : ''
 }
 
+function openProductPicker() {
+  recordProductKeyword.value = ''
+  productPickerVisible.value = true
+}
+
+function closeProductPicker() {
+  productPickerVisible.value = false
+  recordProductKeyword.value = ''
+}
+
 function selectProductForRecord(product) {
   if (!product) return
   applyProductToRecord(product)
+  productPickerVisible.value = false
 }
 
 function applyProductToRecord(product = productMap.value.get(recordForm.productId)) {
@@ -947,20 +959,14 @@ async function stopScanner() {
 
         <p class="section-title">引用商品资料</p>
         <div class="card form-card">
-          <div class="product-search-block">
-            <label><span class="required">*商品</span><input v-model="recordProductKeyword" placeholder="输入商品名称、条码、分类搜索"></label>
-            <div class="product-search-results">
-              <button v-for="p in recordProductSearchResults" :key="p.id" :class="{ selected: p.id === recordForm.productId }" @click.prevent="selectProductForRecord(p)">
-                <div class="thumb tiny" :style="imageStyle(p.imageUrl)"><span v-if="!p.imageUrl">📷</span></div>
-                <div>
-                  <strong>{{ p.name }}</strong>
-                  <small>{{ p.category || '未分类' }} · {{ p.barcode || '无条码' }}</small>
-                </div>
-              </button>
-              <div v-if="!recordProductSearchResults.length" class="empty mini">没有找到商品资料，可点击上方“新增商品”</div>
-            </div>
-          </div>
-          <label v-if="productMap.get(recordForm.productId)"><span>已选商品</span><div class="inline-product"><div class="thumb tiny" :style="imageStyle(productMap.get(recordForm.productId).imageUrl)"></div><b>{{ productMap.get(recordForm.productId).category || '未分类' }}</b></div></label>
+          <label class="record-product-line">
+            <span class="required">*商品</span>
+            <button class="record-product-picker" @click.prevent="openProductPicker">
+              {{ productMap.get(recordForm.productId)?.name || '请选择商品资料' }}
+            </button>
+            <button class="scan-btn" @click.prevent="openProductPicker">选择</button>
+          </label>
+          <label v-if="productMap.get(recordForm.productId)"><span>已选商品</span><div class="inline-product"><div class="thumb tiny" :style="imageStyle(productMap.get(recordForm.productId).imageUrl)"><span v-if="!productMap.get(recordForm.productId).imageUrl">📷</span></div><b>{{ productMap.get(recordForm.productId).category || '未分类' }}</b></div></label>
         </div>
 
         <p class="section-title">效期信息</p>
@@ -1226,6 +1232,35 @@ async function stopScanner() {
           <button class="ghost wide" @click="resetUserId(); showToast('已恢复默认用户ID'); loadAll()">恢复默认用户ID</button>
         </div>
       </section>
+
+      <div v-if="productPickerVisible" class="modal-mask product-picker-mask" @click.self="closeProductPicker">
+        <div class="product-picker-box">
+          <header class="picker-header">
+            <span></span>
+            <strong>选择商品</strong>
+            <button @click="closeProductPicker">×</button>
+          </header>
+          <div class="picker-search">
+            <span>⌕</span>
+            <input v-model="recordProductKeyword" placeholder="请输入商品名称、条码、分类" autofocus>
+          </div>
+          <div class="picker-results">
+            <button v-for="p in recordProductSearchResults" :key="p.id" class="picker-result-row" @click="selectProductForRecord(p)">
+              <div class="thumb tiny" :style="imageStyle(p.imageUrl)"><span v-if="!p.imageUrl">📷</span></div>
+              <div>
+                <strong>{{ p.name }}</strong>
+                <small>{{ p.category || '未分类' }} · {{ p.barcode || '无条码' }}</small>
+              </div>
+            </button>
+            <div v-if="recordProductKeyword && !recordProductSearchResults.length" class="empty">没有找到匹配商品</div>
+            <div v-if="!recordProductKeyword" class="empty">输入关键词后显示匹配商品</div>
+          </div>
+          <div class="picker-actions">
+            <button class="ghost" @click="closeProductPicker">取消</button>
+            <button class="primary" @click="closeProductPicker(); openProductForm()">新增商品</button>
+          </div>
+        </div>
+      </div>
 
       <div v-if="scannerVisible" class="modal-mask" @click.self="settings.autoCloseDialog && stopScanner()">
         <div class="scanner-box">
