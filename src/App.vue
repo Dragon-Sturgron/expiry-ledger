@@ -1188,9 +1188,9 @@ async function stopScanner() {
             <b class="icon orange">⚙️</b>
             <span>临期配置</span>
           </button>
-          <button @click="showToast('模板库后续可扩展')">
-            <b class="icon blue">📋</b>
-            <span>模板库</span>
+          <button @click="openAdminSettings">
+            <b class="icon blue">🛠️</b>
+            <span>后台配置</span>
           </button>
           <button @click="openCategorySettings('userSettings')">
             <b class="icon red">🏷️</b>
@@ -1205,25 +1205,7 @@ async function stopScanner() {
             <span>数据导出</span>
           </button>
         </div>
-
-        <div class="setting-list">
-          <button class="setting-row" @click="navigate('basicSettings')">
-            <span>临期天数与提醒时间</span><em>›</em>
-          </button>
-          <button class="setting-row" @click="openCategorySettings('userSettings')">
-            <span>分类配置</span><em>›</em>
-          </button>
-          <button class="setting-row" @click="navigate('exportRecords')">
-            <span>数据导出</span><em>›</em>
-          </button>
-          <button class="setting-row" @click="loadAll">
-            <span>刷新同步</span><em>›</em>
-          </button>
-          <button class="setting-row" @click="openAdminSettings">
-            <span>后台配置</span><em>/admin ›</em>
-          </button>
-        </div>
-      </section>
+</section>
 
       <section v-if="screen === 'basicSettings'" class="page settings-page">
         <header class="page-header">
