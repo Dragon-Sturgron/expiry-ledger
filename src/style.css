@@ -244,3 +244,41 @@ dt { color: #8a94a5; } dd { margin: 0; word-break: break-all; }
 .product-picker-mask { align-items: flex-end; }
 .product-picker-box { width: min(414px, 100vw); margin: 0 auto; }
 .picker-results { height: 170px; max-height: 170px; overflow-y: auto; }
+
+/* responsive product picker modal */
+.product-picker-mask {
+  align-items: flex-end !important;
+  justify-content: center !important;
+  padding: 0 12px max(12px, env(safe-area-inset-bottom)) !important;
+  box-sizing: border-box !important;
+}
+.product-picker-box {
+  width: 100% !important;
+  max-width: 390px !important;
+  margin: 0 auto !important;
+  box-sizing: border-box !important;
+  border-radius: 14px !important;
+}
+.picker-results {
+  height: min(220px, 36vh) !important;
+  max-height: min(220px, 36vh) !important;
+  overflow-y: auto !important;
+}
+@media (max-width: 360px) {
+  .product-picker-mask {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  .product-picker-box {
+    max-width: none !important;
+  }
+  .picker-results {
+    height: min(190px, 34vh) !important;
+    max-height: min(190px, 34vh) !important;
+  }
+}
+@media (min-width: 768px) {
+  .product-picker-box {
+    max-width: 390px !important;
+  }
+}
