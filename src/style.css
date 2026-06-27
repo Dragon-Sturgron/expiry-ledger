@@ -314,3 +314,6 @@ dt { color: #8a94a5; } dd { margin: 0; word-break: break-all; }
     font-size: 13px !important;
   }
 }
+
+/* remove expiry calculation floating button: keep scan/add compact */
+.fab-stack { gap: 14px !important; }

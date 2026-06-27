@@ -573,24 +573,32 @@ async function removeProduct(product) {
   const used = records.value.some(r => r.productId === product.id)
   const msg = used ? `「${product.name}」已有记录引用，删除后历史记录会保留商品快照，确定删除？` : `确定删除「${product.name}」？`
   if (!confirm(msg)) return
+  const oldProducts = [...products.value]
   try {
-    await api.deleteProduct(product.id)
-    await loadAll()
+    products.value = products.value.filter(p => p.id !== product.id)
+    selectedProduct.value = null
+    const res = await api.deleteProduct(product.id)
+    if (res?.ok === false) throw new Error(res.message || '删除失败')
     showToast('商品资料已删除')
     backHome()
   } catch (e) {
+    products.value = oldProducts
     showToast(e.message)
   }
 }
 
 async function removeRecord(record) {
   if (!confirm('确定删除这条效期记录？')) return
+  const oldRecords = [...records.value]
   try {
-    await api.deleteRecord(record.id)
-    await loadAll()
+    records.value = records.value.filter(r => r.id !== record.id)
+    selectedRecord.value = null
+    const res = await api.deleteRecord(record.id)
+    if (res?.ok === false) throw new Error(res.message || '删除失败')
     showToast('效期记录已删除')
     backHome()
   } catch (e) {
+    records.value = oldRecords
     showToast(e.message)
   }
 }
@@ -920,7 +928,6 @@ async function stopScanner() {
         </div>
 
         <div class="fab-stack">
-          <button class="fab small" @click="activeTab='todo'">效期<br>计算</button>
           <button class="fab fab-scan" @click="startScanner('query')" aria-label="扫码"><span class="scan-mark"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></span></button>
           <button class="fab add" @click="products.length ? openRecordForm() : openProductForm()">＋</button>
         </div>

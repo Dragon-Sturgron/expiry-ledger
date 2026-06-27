@@ -44,6 +44,34 @@ async function findExistingRecordKey(kv, id, preferredUserId = 'default') {
   return preferredKey
 }
 
+async function findExistingRecordKeys(kv, id, preferredUserId = 'default') {
+  const safe = safeId(id || '')
+  if (!safe) return []
+  const matched = new Set()
+
+  const preferredKey = recordKey(preferredUserId || 'default', safe)
+  const preferred = await kvGetJson(kv, preferredKey)
+  if (preferred?.id) matched.add(preferredKey)
+
+  const recordKeys = await listAllKeys(kv, 'record_')
+  for (const key of recordKeys) {
+    const record = await kvGetJson(kv, key)
+    if (safeId(record?.id || '') === safe) matched.add(key)
+  }
+
+  // 兼容旧版 item_ 数据：旧数据在列表中会被转换成效期记录。
+  // 如果只删除 record_，旧 item_ 仍会再次显示，导致“提示删除成功但实际还在”。
+  const legacyKeys = await listAllKeys(kv, 'item_')
+  for (const key of legacyKeys) {
+    const item = await kvGetJson(kv, key)
+    if (!item?.id) continue
+    const legacy = legacyItemToRecord(item)
+    if (safeId(legacy?.id || item.id || '') === safe || safeId(item.id || '') === safe) matched.add(key)
+  }
+
+  return Array.from(matched)
+}
+
 export async function onRequestGet(context) {
   const denied = await requireAccess(context)
   if (denied) return denied
@@ -95,7 +123,8 @@ export async function onRequestDelete(context) {
   const userId = getUserId(request, body)
   const id = safeId(body.id || '')
   if (!id) return error('缺少 id', 400)
-  const key = await findExistingRecordKey(kv, id, userId)
-  await kv.delete(key)
-  return json({ ok: true })
+  const keys = await findExistingRecordKeys(kv, id, userId)
+  if (!keys.length) return error('未找到要删除的效期记录', 404)
+  await Promise.all(keys.map(key => kv.delete(key)))
+  return json({ ok: true, deleted: keys.length })
 }

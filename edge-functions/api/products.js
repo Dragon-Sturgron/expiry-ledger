@@ -36,6 +36,25 @@ async function findExistingProductKey(kv, id, preferredUserId = 'default') {
   return preferredKey
 }
 
+async function findExistingProductKeys(kv, id, preferredUserId = 'default') {
+  const safe = safeId(id || '')
+  if (!safe) return []
+  const matched = new Set()
+  const preferredKey = productKey(preferredUserId || 'default', safe)
+  const preferred = await kvGetJson(kv, preferredKey)
+  if (preferred?.id) matched.add(preferredKey)
+
+  // 只在默认键未命中时扫描，兼容旧 userId 保存的数据
+  if (!matched.size) {
+    const keys = await listAllKeys(kv, 'product_')
+    for (const key of keys) {
+      const product = await kvGetJson(kv, key)
+      if (safeId(product?.id || '') === safe) matched.add(key)
+    }
+  }
+  return Array.from(matched)
+}
+
 export async function onRequestGet(context) {
   const denied = await requireAccess(context)
   if (denied) return denied
@@ -86,7 +105,8 @@ export async function onRequestDelete(context) {
   const userId = getUserId(request, body)
   const id = safeId(body.id || '')
   if (!id) return error('缺少 id', 400)
-  const key = await findExistingProductKey(kv, id, userId)
-  await kv.delete(key)
-  return json({ ok: true })
+  const keys = await findExistingProductKeys(kv, id, userId)
+  if (!keys.length) return error('未找到要删除的商品资料', 404)
+  await Promise.all(keys.map(key => kv.delete(key)))
+  return json({ ok: true, deleted: keys.length })
 }
