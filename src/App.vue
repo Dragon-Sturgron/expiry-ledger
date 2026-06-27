@@ -12,6 +12,7 @@ const loading = ref(false)
 const toast = ref('')
 const query = ref('')
 const activeTab = ref('records')
+const listPage = reactive({ type: 'records', status: '', title: '', empty: '' })
 const products = ref([])
 const records = ref([])
 const selectedProduct = ref(null)
@@ -83,6 +84,7 @@ function emptyProduct() {
 function emptyRecord() {
   return {
     productId: '',
+    productName: '',
     quantity: 1,
     warningQty: 0,
     startDate: today,
@@ -371,6 +373,22 @@ const exportRows = computed(() => {
   })
 })
 
+const listPageRecordCards = computed(() => {
+  let list = recordCards.value
+  if (listPage.status === 'warning') {
+    list = list.filter(({ record }) => Number(record.quantity) <= Number(record.warningQty || 0) && Number(record.warningQty || 0) > 0)
+  } else if (listPage.status === 'invalid') {
+    list = list.filter(({ record }) => Number(record.quantity) <= 0)
+  } else if (listPage.status) {
+    list = list.filter(({ record }) => getStatus(record, Number(settings.nearDays) || 30).key === listPage.status)
+  }
+  return list
+})
+
+const listPageProducts = computed(() => {
+  return [...products.value].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hans-CN'))
+})
+
 const todoRows = computed(() => {
   return recordCards.value
     .filter(({ record }) => ['expiring', 'expired'].includes(getStatus(record, Number(settings.nearDays) || 30).key))
@@ -400,11 +418,20 @@ function applyEmptyProduct() {
 function applyEmptyRecord(product = null) {
   Object.assign(recordForm, emptyRecord(), {
     remindDays: Number(settings.defaultRemindDays) || 3,
-    productId: product?.id || ''
+    productId: product?.id || '',
+    productName: product?.name || ''
   })
   recordProductKeyword.value = ''
   editingRecordId.value = ''
   if (product) applyProductToRecord(product)
+}
+
+function openListPage(type, status = '', title = '') {
+  listPage.type = type
+  listPage.status = status
+  listPage.title = title || (type === 'products' ? '商品资料' : '效期记录')
+  listPage.empty = type === 'products' ? '暂无商品资料' : '暂无效期记录'
+  navigate('listPage')
 }
 
 function openProductForm(product = null) {
@@ -421,6 +448,8 @@ function openRecordForm(record = null, product = null) {
   if (record) {
     editingRecordId.value = record.id
     Object.assign(recordForm, JSON.parse(JSON.stringify(record)))
+    const currentProduct = productOf(record)
+    recordForm.productName = currentProduct?.name || record.productName || ''
     syncRecordProductKeyword()
   }
   navigate('recordForm')
@@ -452,6 +481,7 @@ function productDisplayName(product) {
 function syncRecordProductKeyword() {
   const product = productMap.value.get(recordForm.productId)
   recordProductKeyword.value = product ? productDisplayName(product) : ''
+  if (product && !recordForm.productName) recordForm.productName = product.name || ''
 }
 
 function openProductPicker() {
@@ -473,6 +503,7 @@ function selectProductForRecord(product) {
 function applyProductToRecord(product = productMap.value.get(recordForm.productId)) {
   if (!product) return
   recordForm.productId = product.id
+  recordForm.productName = product.name || recordForm.productName
   recordProductKeyword.value = productDisplayName(product)
   if (!recordForm.shelfLifeValue && product.defaultShelfLifeValue) recordForm.shelfLifeValue = product.defaultShelfLifeValue
   if (product.defaultShelfLifeUnit) recordForm.shelfLifeUnit = product.defaultShelfLifeUnit
@@ -489,7 +520,7 @@ function validateProduct() {
 }
 
 function validateRecord() {
-  if (!recordForm.productId) throw new Error('请选择商品资料')
+  if (!recordForm.productName?.trim() && !recordForm.productId) throw new Error('请输入商品名称或引用商品资料')
   if (!recordForm.expiryDate) throw new Error('请选择期限或到期日期')
 }
 
@@ -507,11 +538,12 @@ function productPayload() {
   }
 }
 
-function recordPayload() {
-  const product = productMap.value.get(recordForm.productId)
+function recordPayload(productOverride = null) {
+  const product = productOverride || productMap.value.get(recordForm.productId)
   return {
     id: editingRecordId.value || undefined,
-    productId: recordForm.productId,
+    productId: product?.id || recordForm.productId,
+    productName: recordForm.productName.trim(),
     productSnapshot: product ? {
       id: product.id,
       name: product.name,
@@ -541,25 +573,63 @@ async function saveProduct() {
     else await api.createProduct(payload)
     await loadAll()
     showToast(editingProductId.value ? '商品资料已修改' : '商品资料已保存')
-    backHome()
-    activeTab.value = 'products'
+    if (screenStack.value.includes('listPage')) {
+      smartBack()
+    } else {
+      backHome()
+      activeTab.value = 'products'
+    }
   } catch (e) {
     showToast(e.message)
   }
 }
 
+async function ensureRecordProduct() {
+  const typedName = recordForm.productName.trim()
+  const selected = recordForm.productId ? productMap.value.get(recordForm.productId) : null
+  if (selected) return selected
+
+  const existing = products.value.find(p => String(p.name || '').trim().toLowerCase() === typedName.toLowerCase())
+  if (existing) {
+    applyProductToRecord(existing)
+    return existing
+  }
+
+  const newProductPayload = {
+    name: typedName,
+    category: settings.defaultCategory || configuredCategories.value[0] || '未分类',
+    barcode: '',
+    imageUrl: '',
+    tags: [],
+    defaultShelfLifeValue: recordForm.shelfLifeValue ? Number(recordForm.shelfLifeValue) : '',
+    defaultShelfLifeUnit: recordForm.shelfLifeUnit,
+    remark: ''
+  }
+  const created = await api.createProduct(newProductPayload)
+  const product = created?.product || newProductPayload
+  products.value = [...products.value, product]
+  applyProductToRecord(product)
+  return product
+}
+
 async function saveRecord(again = false) {
   try {
     validateRecord()
-    const payload = recordPayload()
-    if (editingRecordId.value) await api.updateRecord(payload)
-    else await api.createRecord(payload)
-    await loadAll()
+    const product = await ensureRecordProduct()
+    const payload = recordPayload(product)
+    let saved
+    if (editingRecordId.value) saved = await api.updateRecord(payload)
+    else saved = await api.createRecord(payload)
+    const nextRecord = saved?.record || payload
+    if (editingRecordId.value) {
+      records.value = records.value.map(r => r.id === nextRecord.id ? nextRecord : r)
+    } else {
+      records.value = [nextRecord, ...records.value]
+    }
     showToast(editingRecordId.value ? '效期记录已修改' : '效期记录已保存')
     if (again) {
-      const product = productMap.value.get(payload.productId)
       applyEmptyRecord(product)
-      navigate('recordForm')
+      navigate('recordForm', { push: false })
     } else {
       backHome()
       activeTab.value = 'records'
@@ -811,8 +881,9 @@ async function startScanner(target = 'query') {
             selectProductForRecord(product)
             showToast('已匹配商品资料')
           } else {
+            recordForm.productName = decodedText
             recordProductKeyword.value = decodedText
-            showToast('未匹配商品，可输入名称搜索或先添加商品资料')
+            showToast('未匹配商品，保存时会自动新增商品资料')
           }
         } else {
           query.value = decodedText
@@ -871,12 +942,12 @@ async function stopScanner() {
         </div>
 
         <div class="stats-grid">
-          <button class="stat-card" @click="activeTab='records'; query = ''"><b>😊</b><span>正常 {{ stats.normal }}</span></button>
-          <button class="stat-card" @click="activeTab='todo'"><b>😎</b><span>临期 {{ stats.expiring }}</span></button>
-          <button class="stat-card" @click="activeTab='todo'"><b>😈</b><span>过期 {{ stats.expired }}</span></button>
-          <button class="stat-card" @click="activeTab='records'"><b>😄</b><span>记录 {{ stats.total }}</span></button>
-          <button class="stat-card"><b>😐</b><span>数量预警 {{ stats.warning }}</span></button>
-          <button class="stat-card" @click="activeTab='products'"><b>📦</b><span>商品 {{ products.length }}</span></button>
+          <button class="stat-card" @click="openListPage('records', 'normal', '正常效期')"><b>😊</b><span>正常 {{ stats.normal }}</span></button>
+          <button class="stat-card" @click="openListPage('records', 'expiring', '临期效期')"><b>😎</b><span>临期 {{ stats.expiring }}</span></button>
+          <button class="stat-card" @click="openListPage('records', 'expired', '过期效期')"><b>😈</b><span>过期 {{ stats.expired }}</span></button>
+          <button class="stat-card" @click="openListPage('records', '', '全部效期')"><b>😄</b><span>总数 {{ stats.total }}</span></button>
+          <button class="stat-card" @click="openListPage('records', 'warning', '数量预警')"><b>😐</b><span>数量预警 {{ stats.warning }}</span></button>
+          <button class="stat-card" @click="openListPage('products', '', '商品资料')"><b>📦</b><span>商品 {{ products.length }}</span></button>
         </div>
 
         <nav class="tabs">
@@ -932,9 +1003,47 @@ async function stopScanner() {
           <button class="fab add" @click="products.length ? openRecordForm() : openProductForm()">＋</button>
         </div>
 
-        <div class="bottom-actions bottom-actions-two">
-          <button @click="openProductForm()">＋商品</button>
+        <div class="bottom-actions bottom-actions-one">
           <button @click="navigate('userSettings')">⚙设置</button>
+        </div>
+      </section>
+
+      <section v-if="screen === 'listPage'" class="page list-page">
+        <header class="page-header">
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
+          <strong class="page-title">{{ listPage.title }}</strong>
+          <button v-if="listPage.type === 'products'" class="text-action" @click="openProductForm()">＋商品</button>
+          <span v-else class="header-placeholder"></span>
+        </header>
+
+        <div v-if="listPage.type === 'records'" class="item-cards">
+          <article v-for="card in listPageRecordCards" :key="card.record.id" class="item-card" @click="openRecordDetail(card.record)">
+            <div class="thumb" :style="imageStyle(card.product.imageUrl)">
+              <span v-if="!card.product.imageUrl">📷</span>
+            </div>
+            <div class="item-main">
+              <strong>{{ card.product.name || card.record.productName || '未命名商品' }}</strong>
+              <small>{{ card.product.category || '未分类' }} · 数量 {{ card.record.quantity }}</small>
+              <small>到期：{{ card.record.expiryDate || '-' }} · {{ describeDays(diffDays(card.record.expiryDate)) }}</small>
+            </div>
+            <i :class="['badge', statClass(card.record)]">{{ getStatus(card.record, settings.nearDays).label }}</i>
+          </article>
+          <div v-if="!listPageRecordCards.length" class="empty">{{ listPage.empty }}</div>
+        </div>
+
+        <div v-if="listPage.type === 'products'" class="item-cards">
+          <article v-for="product in listPageProducts" :key="product.id" class="item-card" @click="openProductDetail(product)">
+            <div class="thumb" :style="imageStyle(product.imageUrl)">
+              <span v-if="!product.imageUrl">📷</span>
+            </div>
+            <div class="item-main">
+              <strong>{{ product.name }}</strong>
+              <small>{{ product.category || '未分类' }} · {{ product.barcode || '无条码' }}</small>
+              <small>默认保质期：{{ product.defaultShelfLifeValue || '-' }}{{ unitText(product.defaultShelfLifeUnit) }}</small>
+            </div>
+            <em class="next">›</em>
+          </article>
+          <div v-if="!listPageProducts.length" class="empty">暂无商品资料，点击右上角 +商品 添加</div>
         </div>
       </section>
 
@@ -986,12 +1095,10 @@ async function stopScanner() {
         <div class="card form-card">
           <label class="record-product-line">
             <span class="required">*商品</span>
-            <button class="record-product-picker" @click.prevent="openProductPicker">
-              {{ productMap.get(recordForm.productId)?.name || '请选择商品资料' }}
-            </button>
-            <button class="scan-btn" @click.prevent="openProductPicker">选择</button>
+            <input v-model="recordForm.productName" placeholder="可手动输入商品名称" @input="recordForm.productId = ''">
+            <button class="scan-btn" @click.prevent="openProductPicker">引用商品</button>
           </label>
-          <label v-if="productMap.get(recordForm.productId)"><span>已选商品</span><div class="inline-product"><div class="thumb tiny" :style="imageStyle(productMap.get(recordForm.productId).imageUrl)"><span v-if="!productMap.get(recordForm.productId).imageUrl">📷</span></div><b>{{ productMap.get(recordForm.productId).category || '未分类' }}</b></div></label>
+          <label v-if="productMap.get(recordForm.productId)"><span>已引用</span><div class="inline-product"><div class="thumb tiny" :style="imageStyle(productMap.get(recordForm.productId).imageUrl)"><span v-if="!productMap.get(recordForm.productId).imageUrl">📷</span></div><b>{{ productMap.get(recordForm.productId).category || '未分类' }}</b></div></label>
         </div>
 
         <p class="section-title">效期信息</p>

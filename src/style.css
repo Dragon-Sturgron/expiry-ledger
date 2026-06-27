@@ -317,3 +317,10 @@ dt { color: #8a94a5; } dd { margin: 0; word-break: break-all; }
 
 /* remove expiry calculation floating button: keep scan/add compact */
 .fab-stack { gap: 14px !important; }
+
+/* stats cards are page entry buttons */
+.stat-card { cursor: pointer; }
+.list-page .item-cards { margin-top: 8px; }
+.bottom-actions-one button { min-width: 92px !important; }
+.record-product-line input { flex: 1; min-width: 0; text-align: right; }
+.record-product-line .scan-btn { white-space: nowrap; min-width: 66px; }
