@@ -7,6 +7,7 @@ const today = formatDate()
 const ADMIN_PATH = '/admin'
 const isAdminPath = location.pathname.replace(/\/+$/, '') === ADMIN_PATH
 const screen = ref(isAdminPath ? 'adminSettings' : 'home')
+const screenStack = ref([])
 const loading = ref(false)
 const toast = ref('')
 const query = ref('')
@@ -105,6 +106,23 @@ function showToast(msg) {
   toast.value = msg
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { toast.value = '' }, 2600)
+}
+
+function navigate(target, options = {}) {
+  if (!target || screen.value === target) return
+  if (options.push !== false) screenStack.value.push(screen.value)
+  screen.value = target
+}
+
+function smartBack() {
+  stopScanner()
+  productPickerVisible.value = false
+  const prev = screenStack.value.pop()
+  if (prev) {
+    screen.value = prev
+  } else {
+    screen.value = isAdminPath ? 'adminSettings' : 'home'
+  }
 }
 
 function executeSearch() {
@@ -318,7 +336,7 @@ const filteredConfiguredCategories = computed(() => {
 const recordProductSearchResults = computed(() => {
   const key = recordProductKeyword.value.trim().toLowerCase()
   const list = [...products.value].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hans-CN'))
-  if (!key) return []
+  if (!key) return list
   return list.filter(p => [
     p.name,
     p.category,
@@ -395,7 +413,7 @@ function openProductForm(product = null) {
     editingProductId.value = product.id
     Object.assign(productForm, JSON.parse(JSON.stringify(product)), { tagText: (product.tags || []).join('，') })
   }
-  screen.value = 'productForm'
+  navigate('productForm')
 }
 
 function openRecordForm(record = null, product = null) {
@@ -405,21 +423,22 @@ function openRecordForm(record = null, product = null) {
     Object.assign(recordForm, JSON.parse(JSON.stringify(record)))
     syncRecordProductKeyword()
   }
-  screen.value = 'recordForm'
+  navigate('recordForm')
 }
 
 function openProductDetail(product) {
   selectedProduct.value = product
-  screen.value = 'productDetail'
+  navigate('productDetail')
 }
 
 function openRecordDetail(record) {
   selectedRecord.value = record
-  screen.value = 'recordDetail'
+  navigate('recordDetail')
 }
 
 function backHome() {
-  screen.value = 'home'
+  screenStack.value = []
+  screen.value = isAdminPath ? 'adminSettings' : 'home'
   selectedProduct.value = null
   selectedRecord.value = null
   stopScanner()
@@ -540,7 +559,7 @@ async function saveRecord(again = false) {
     if (again) {
       const product = productMap.value.get(payload.productId)
       applyEmptyRecord(product)
-      screen.value = 'recordForm'
+      navigate('recordForm')
     } else {
       backHome()
       activeTab.value = 'records'
@@ -636,18 +655,18 @@ function exportRecordsCsv() {
 function openCategorySettings(back = 'userSettings') {
   categoryBackScreen.value = back
   categoryKeyword.value = ''
-  screen.value = 'categorySettings'
+  navigate('categorySettings')
 }
 
 function closeCategorySettings() {
-  screen.value = categoryBackScreen.value || 'userSettings'
+  navigate(categoryBackScreen.value || 'userSettings', { push: false })
 }
 
 function chooseCategory(name) {
   if (!name) return
   productForm.category = name
   if (categoryBackScreen.value === 'productForm') {
-    screen.value = 'productForm'
+    navigate('productForm')
   } else {
     settings.defaultCategory = name
   }
@@ -909,13 +928,13 @@ async function stopScanner() {
         <div class="bottom-actions">
           <button @click="openProductForm()">＋商品</button>
           <button @click="openRecordForm()">＋效期</button>
-          <button @click="screen='userSettings'">⚙设置</button>
+          <button @click="navigate('userSettings')">⚙设置</button>
         </div>
       </section>
 
       <section v-if="screen === 'productForm'" class="page add-page">
         <header class="page-header">
-          <button class="back-btn" @click="backHome" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">{{ editingProductId ? '编辑商品' : '添加商品' }}</strong>
           <span class="header-placeholder"></span>
         </header>
@@ -945,7 +964,7 @@ async function stopScanner() {
 
       <section v-if="screen === 'recordForm'" class="page add-page">
         <header class="page-header">
-          <button class="back-btn" @click="backHome" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">{{ editingRecordId ? '编辑效期' : '添加效期' }}</strong>
           <span class="header-placeholder"></span>
         </header>
@@ -989,7 +1008,7 @@ async function stopScanner() {
 
       <section v-if="screen === 'productDetail' && selectedProduct" class="page detail-page">
         <header class="page-header">
-          <button class="back-btn" @click="backHome" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">商品详情</strong>
           <button class="text-action danger" @click="removeProduct(selectedProduct)">删除</button>
         </header>
@@ -1010,7 +1029,7 @@ async function stopScanner() {
 
       <section v-if="screen === 'recordDetail' && selectedRecord" class="page detail-page">
         <header class="page-header">
-          <button class="back-btn" @click="backHome" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">效期详情</strong>
           <button class="text-action danger" @click="removeRecord(selectedRecord)">删除</button>
         </header>
@@ -1034,7 +1053,7 @@ async function stopScanner() {
 
       <section v-if="screen === 'userSettings'" class="page settings-page">
         <header class="page-header">
-          <button class="back-btn" @click="backHome" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">设置</strong>
           <span class="header-placeholder"></span>
         </header>
@@ -1048,11 +1067,11 @@ async function stopScanner() {
         </div>
 
         <div class="settings-grid">
-          <button @click="screen='basicSettings'">
+          <button @click="navigate('basicSettings')">
             <b class="icon green">🔔</b>
             <span>提醒设置</span>
           </button>
-          <button @click="screen='basicSettings'">
+          <button @click="navigate('basicSettings')">
             <b class="icon orange">⚙️</b>
             <span>临期配置</span>
           </button>
@@ -1068,20 +1087,20 @@ async function stopScanner() {
             <b class="icon purple">☰</b>
             <span>数据导入</span>
           </button>
-          <button @click="screen='exportRecords'">
+          <button @click="navigate('exportRecords')">
             <b class="icon teal">☷</b>
             <span>数据导出</span>
           </button>
         </div>
 
         <div class="setting-list">
-          <button class="setting-row" @click="screen='basicSettings'">
+          <button class="setting-row" @click="navigate('basicSettings')">
             <span>临期天数与提醒时间</span><em>›</em>
           </button>
           <button class="setting-row" @click="openCategorySettings('userSettings')">
             <span>分类配置</span><em>›</em>
           </button>
-          <button class="setting-row" @click="screen='exportRecords'">
+          <button class="setting-row" @click="navigate('exportRecords')">
             <span>数据导出</span><em>›</em>
           </button>
           <button class="setting-row" @click="loadAll">
@@ -1095,7 +1114,7 @@ async function stopScanner() {
 
       <section v-if="screen === 'basicSettings'" class="page settings-page">
         <header class="page-header">
-          <button class="back-btn" @click="screen='userSettings'" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">提醒与临期</strong>
           <span class="header-placeholder"></span>
         </header>
@@ -1147,7 +1166,7 @@ async function stopScanner() {
 
       <section v-if="screen === 'exportRecords'" class="page settings-page export-page">
         <header class="page-header">
-          <button class="back-btn" @click="screen='userSettings'" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">数据导出</strong>
           <span class="header-placeholder"></span>
         </header>
@@ -1186,7 +1205,7 @@ async function stopScanner() {
 
       <section v-if="screen === 'adminSettings'" class="page settings-page admin-page">
         <header class="page-header">
-          <button class="back-btn" @click="openPublicHome" aria-label="返回">←</button>
+          <button class="back-btn" @click="smartBack" aria-label="返回">←</button>
           <strong class="page-title">后台配置</strong>
           <span class="header-placeholder"></span>
         </header>
@@ -1253,7 +1272,7 @@ async function stopScanner() {
               </div>
             </button>
             <div v-if="recordProductKeyword && !recordProductSearchResults.length" class="empty">没有找到匹配商品</div>
-            <div v-if="!recordProductKeyword" class="empty">输入关键词后显示匹配商品</div>
+            
           </div>
           <div class="picker-actions">
             <button class="ghost" @click="closeProductPicker">取消</button>

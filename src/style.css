@@ -239,3 +239,8 @@ dt { color: #8a94a5; } dd { margin: 0; word-break: break-all; }
 .picker-result-row small { display: block; margin-top: 3px; color: #8a94a5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
 .picker-actions .ghost, .picker-actions .primary { margin: 0; min-height: 44px; }
+
+/* product picker: fixed scroll area, show all products by default */
+.product-picker-mask { align-items: flex-end; }
+.product-picker-box { width: min(414px, 100vw); margin: 0 auto; }
+.picker-results { height: 170px; max-height: 170px; overflow-y: auto; }
