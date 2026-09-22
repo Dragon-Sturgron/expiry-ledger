@@ -10,7 +10,8 @@ const stack = ref([])
 const loading = ref(false)
 const toast = ref('')
 const query = ref('')
-const activeTab = ref('home')
+const homeFilter = ref('all')
+const selectedCategory = ref('')
 const products = ref([])
 const records = ref([])
 const selectedProduct = ref(null)
@@ -69,16 +70,22 @@ function emptyRecord() {
   return {
     productId: '',
     productName: '',
+    category: '',
+    imageUrl: '',
+    barcode: '',
+    tagText: '',
+    tags: [],
     quantity: 1,
     warningQty: 0,
     startDate: today,
     shelfLifeValue: '',
-    shelfLifeUnit: 'month',
+    shelfLifeUnit: 'day',
     expiryDate: '',
     reminder: true,
     remindDays: 7,
     location: '',
-    remark: ''
+    remark: '',
+    saveTemplate: false
   }
 }
 
@@ -105,9 +112,11 @@ function back() {
   screen.value = stack.value.pop() || 'home'
 }
 
-function backHome(tab = 'home') {
+function backHome() {
   stack.value = []
-  activeTab.value = tab
+  homeFilter.value = 'all'
+  selectedCategory.value = ''
+  query.value = ''
   screen.value = 'home'
   selectedProduct.value = null
   selectedRecord.value = null
@@ -201,10 +210,10 @@ const stats = computed(() => {
   return result
 })
 
-const alertCards = computed(() => recordCards.value
-  .filter(({ record }) => ['expiring', 'expired'].includes(getStatus(record, Number(settings.nearDays) || 30).key)))
-
-const imminentCards = computed(() => alertCards.value.slice(0, 8))
+const categories = computed(() => {
+  const names = [...(settings.categories || []), ...products.value.map(p => p.category)]
+  return Array.from(new Set(names.filter(Boolean)))
+})
 
 const filteredProducts = computed(() => {
   const key = query.value.trim().toLowerCase()
@@ -214,36 +223,51 @@ const filteredProducts = computed(() => {
     .filter(Boolean).join(' ').toLowerCase().includes(key))
 })
 
-const filteredRecords = computed(() => {
+const categoryCounts = computed(() => categories.value.map(name => ({
+  name,
+  count: recordCards.value.filter(({ product }) => (product.category || '未分类') === name).length
+})))
+
+const homeRecordCards = computed(() => {
   const key = query.value.trim().toLowerCase()
-  if (!key) return recordCards.value
-  return recordCards.value.filter(({ record, product }) => [
-    product.name, product.category, product.barcode, record.location, record.remark, ...(product.tags || [])
+  let list = recordCards.value
+
+  if (homeFilter.value === 'expiring') {
+    list = list.filter(({ record }) => getStatus(record, Number(settings.nearDays) || 30).key === 'expiring')
+  } else if (homeFilter.value === 'expired') {
+    list = list.filter(({ record }) => getStatus(record, Number(settings.nearDays) || 30).key === 'expired')
+  } else if (homeFilter.value === 'category') {
+    if (!selectedCategory.value) return []
+    list = list.filter(({ product }) => (product.category || '未分类') === selectedCategory.value)
+  }
+
+  if (!key) return list
+  return list.filter(({ record, product }) => [
+    product.name,
+    product.category,
+    product.barcode,
+    record.location,
+    record.remark,
+    ...(product.tags || [])
   ].filter(Boolean).join(' ').toLowerCase().includes(key))
 })
 
-const categories = computed(() => {
-  const names = [...(settings.categories || []), ...products.value.map(p => p.category)]
-  return Array.from(new Set(names.filter(Boolean)))
+const homeFilterTitle = computed(() => {
+  if (homeFilter.value === 'expiring') return '即将过期'
+  if (homeFilter.value === 'expired') return '已过期'
+  if (homeFilter.value === 'category') return selectedCategory.value || '我的分类'
+  return '全部药品'
 })
 
-const trendBars = computed(() => {
-  const ranges = [
-    { label: '0-5天', a: 0, b: 5, count: 0 },
-    { label: '6-10天', a: 6, b: 10, count: 0 },
-    { label: '11-15天', a: 11, b: 15, count: 0 },
-    { label: '16-20天', a: 16, b: 20, count: 0 },
-    { label: '21-25天', a: 21, b: 25, count: 0 },
-    { label: '26-30天', a: 26, b: 30, count: 0 }
-  ]
-  records.value.forEach(r => {
-    const days = diffDays(r.expiryDate)
-    const item = ranges.find(x => days >= x.a && days <= x.b)
-    if (item) item.count++
-  })
-  const max = Math.max(1, ...ranges.map(x => x.count))
-  return ranges.map(x => ({ ...x, height: Math.max(7, Math.round(x.count / max * 72)) }))
-})
+function setHomeFilter(filter) {
+  homeFilter.value = filter
+  if (filter !== 'category') selectedCategory.value = ''
+}
+
+function chooseHomeCategory(name) {
+  homeFilter.value = 'category'
+  selectedCategory.value = name
+}
 
 function statClass(record) {
   return getStatus(record, Number(settings.nearDays) || 30).key
@@ -262,8 +286,20 @@ function applyProductToRecord(product) {
   if (!product) return
   recordForm.productId = product.id
   recordForm.productName = product.name || ''
+  recordForm.category = product.category || settings.defaultCategory || ''
+  recordForm.imageUrl = product.imageUrl || ''
+  recordForm.barcode = product.barcode || ''
+  recordForm.tags = [...(product.tags || [])]
+  recordForm.tagText = recordForm.tags.join('，')
   if (product.defaultShelfLifeValue) recordForm.shelfLifeValue = product.defaultShelfLifeValue
   if (product.defaultShelfLifeUnit) recordForm.shelfLifeUnit = product.defaultShelfLifeUnit
+}
+
+function matchRecordProductByName() {
+  const name = recordForm.productName.trim().toLowerCase()
+  if (!name) return
+  const product = products.value.find(p => String(p.name || '').trim().toLowerCase() === name)
+  if (product) applyProductToRecord(product)
 }
 
 function openProductForm(product = null) {
@@ -282,14 +318,22 @@ function openProductForm(product = null) {
 
 function openRecordForm(record = null, product = null) {
   Object.assign(recordForm, emptyRecord(), {
-    remindDays: Number(settings.defaultRemindDays) || 7
+    remindDays: Number(settings.defaultRemindDays) || 7,
+    category: settings.defaultCategory || categories.value[0] || '家庭常备'
   })
   editingRecordId.value = ''
   if (product) applyProductToRecord(product)
   if (record) {
     editingRecordId.value = record.id
     Object.assign(recordForm, JSON.parse(JSON.stringify(record)))
-    recordForm.productName = productOf(record).name || record.productName || ''
+    const snapshot = productOf(record)
+    recordForm.productName = snapshot.name || record.productName || ''
+    recordForm.category = snapshot.category || recordForm.category || ''
+    recordForm.imageUrl = snapshot.imageUrl || ''
+    recordForm.barcode = snapshot.barcode || ''
+    recordForm.tags = [...(snapshot.tags || [])]
+    recordForm.tagText = recordForm.tags.join('，')
+    recordForm.saveTemplate = Boolean(record.productId)
   }
   navigate('recordForm')
 }
@@ -330,7 +374,8 @@ async function saveProduct() {
     else await api.createProduct(payload)
     await loadAll()
     showToast('药品资料已保存')
-    backHome('products')
+    stack.value = []
+    screen.value = 'productList'
   } catch (e) {
     showToast(e.message)
   } finally {
@@ -338,39 +383,62 @@ async function saveProduct() {
   }
 }
 
+function recordTags() {
+  return String(recordForm.tagText || '')
+    .split(/[，,\s]+/)
+    .map(x => x.trim())
+    .filter(Boolean)
+}
+
 async function ensureRecordProduct() {
   const selected = productMap.value.get(recordForm.productId)
   if (selected) return selected
+
   const typed = recordForm.productName.trim()
   const existing = products.value.find(p => String(p.name || '').trim().toLowerCase() === typed.toLowerCase())
   if (existing) return existing
+  if (!recordForm.saveTemplate) return null
+
   const created = await api.createProduct({
     name: typed,
-    category: settings.defaultCategory || '家庭常备',
-    barcode: '',
-    imageUrl: '',
-    tags: [],
+    category: recordForm.category || settings.defaultCategory || '家庭常备',
+    barcode: recordForm.barcode || '',
+    imageUrl: recordForm.imageUrl || '',
+    tags: recordTags(),
     defaultShelfLifeValue: recordForm.shelfLifeValue ? Number(recordForm.shelfLifeValue) : '',
     defaultShelfLifeUnit: recordForm.shelfLifeUnit,
-    remark: ''
+    remark: recordForm.remark || ''
   })
   return created.product
 }
 
 async function saveRecord(continueAdd = false) {
-  if (!recordForm.productName.trim() && !recordForm.productId) return showToast('请选择或输入药品')
+  if (!recordForm.productName.trim() && !recordForm.productId) return showToast('请输入药品名称')
+  if (!recordForm.category.trim()) return showToast('请选择分类')
   if (!recordForm.expiryDate) return showToast('请选择失效日期')
   loading.value = true
   try {
     const product = await ensureRecordProduct()
+    const snapshot = product ? {
+      id: product.id,
+      name: product.name,
+      category: product.category,
+      barcode: product.barcode,
+      imageUrl: product.imageUrl,
+      tags: product.tags || []
+    } : {
+      name: recordForm.productName.trim(),
+      category: recordForm.category.trim(),
+      barcode: recordForm.barcode.trim(),
+      imageUrl: recordForm.imageUrl.trim(),
+      tags: recordTags()
+    }
+
     const payload = {
       id: editingRecordId.value || undefined,
-      productId: product?.id || recordForm.productId,
-      productName: recordForm.productName.trim(),
-      productSnapshot: product ? {
-        id: product.id, name: product.name, category: product.category, barcode: product.barcode,
-        imageUrl: product.imageUrl, tags: product.tags || []
-      } : undefined,
+      productId: product?.id || recordForm.productId || '',
+      productName: snapshot.name,
+      productSnapshot: snapshot,
       quantity: Number(recordForm.quantity) || 0,
       warningQty: Number(recordForm.warningQty) || 0,
       startDate: recordForm.startDate,
@@ -385,9 +453,9 @@ async function saveRecord(continueAdd = false) {
     if (editingRecordId.value) await api.updateRecord(payload)
     else await api.createRecord(payload)
     await loadAll()
-    showToast('药品记录已保存')
+    showToast('临期记录已保存')
     if (continueAdd) openRecordForm(null, product)
-    else backHome('home')
+    else backHome()
   } catch (e) {
     showToast(e.message)
   } finally {
@@ -400,7 +468,8 @@ async function deleteProduct(product) {
   try {
     await api.deleteProduct(product.id)
     await loadAll()
-    backHome('products')
+    stack.value = []
+    screen.value = 'productList'
   } catch (e) {
     showToast(e.message)
   }
@@ -411,7 +480,7 @@ async function deleteRecord(record) {
   try {
     await api.deleteRecord(record.id)
     await loadAll()
-    backHome('home')
+    backHome()
   } catch (e) {
     showToast(e.message)
   }
@@ -442,6 +511,22 @@ async function uploadImage(event) {
   }
 }
 
+async function uploadRecordImage(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  loading.value = true
+  try {
+    const data = await api.uploadImageToQiniu(file)
+    recordForm.imageUrl = data.url
+    showToast('图片上传成功')
+  } catch (e) {
+    showToast(e.message || '图片上传失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 function findByBarcode(code) {
   return products.value.find(p => String(p.barcode || '').trim() === String(code || '').trim())
 }
@@ -464,7 +549,7 @@ async function startScanner(target = 'query') {
         } else if (target === 'recordProduct') {
           const p = findByBarcode(code)
           if (p) applyProductToRecord(p)
-          else recordForm.productName = code
+          else recordForm.barcode = code
         } else {
           query.value = code
         }
@@ -548,105 +633,98 @@ function logout() {
 
     <template v-else>
       <section v-if="screen === 'home'" class="page home-page">
-        <header class="topbar">
-          <div class="brand">
-            <div class="app-icon small"><i></i></div>
-            <div><h1>临期账本</h1><p>药品效期管理</p></div>
+        <header class="home-brandbar">
+          <div>
+            <h1>临期账本</h1>
+            <p>守护家人健康 · 让每一份药品不浪费</p>
           </div>
-          <button class="family-chip" @click="navigate('settings')">家庭药箱 <span>›</span></button>
+          <button class="home-bell" @click="navigate('settings')" aria-label="设置">♧<i></i></button>
         </header>
 
-        <div class="searchbar">
-          <span>⌕</span>
-          <input v-model="query" placeholder="搜索药品名称、条码、分类">
-          <button @click="startScanner('query')"><b class="scan-icon"></b></button>
+        <section class="home-hero-card">
+          <div class="hero-copy">
+            <h2>管理药品有效期<br>守护家人健康</h2>
+            <p>及时提醒 · 避免过期 · 科学用药</p>
+            <span>小小记录&nbsp;&nbsp;大大安心</span>
+          </div>
+          <div class="hero-medicine" aria-hidden="true">
+            <div class="hero-shield">＋</div>
+            <div class="hero-bottle"><i></i></div>
+            <div class="hero-pill"></div>
+          </div>
+          <div class="hero-dots"><i></i><i></i><i></i></div>
+        </section>
+
+        <div class="home-metrics">
+          <button class="home-metric all" :class="{ selected: homeFilter === 'all' }" @click="setHomeFilter('all')">
+            <span class="metric-icon">▣</span><b>{{ stats.total }}</b><small>全部药品</small>
+          </button>
+          <button class="home-metric expiring" :class="{ selected: homeFilter === 'expiring' }" @click="setHomeFilter('expiring')">
+            <span class="metric-icon">◷</span><b>{{ stats.expiring }}</b><small>即将过期</small>
+          </button>
+          <button class="home-metric expired" :class="{ selected: homeFilter === 'expired' }" @click="setHomeFilter('expired')">
+            <span class="metric-icon">!</span><b>{{ stats.expired }}</b><small>已过期</small>
+          </button>
+          <button class="home-metric category" :class="{ selected: homeFilter === 'category' }" @click="setHomeFilter('category')">
+            <span class="metric-icon">▰</span><b>{{ categories.length }}</b><small>我的分类</small>
+          </button>
         </div>
 
-        <template v-if="activeTab === 'home'">
-          <div class="overview-grid">
-            <button class="metric total"><span>💊</span><div><small>全部记录</small><b>{{ stats.total }}</b></div></button>
-            <button class="metric expiring"><span>◷</span><div><small>即将过期</small><b>{{ stats.expiring }}</b><em>{{ settings.nearDays }}天内</em></div></button>
-            <button class="metric expired"><span>!</span><div><small>已过期</small><b>{{ stats.expired }}</b></div></button>
-            <button class="metric normal"><span>✓</span><div><small>正常</small><b>{{ stats.normal }}</b></div></button>
-          </div>
+        <div v-if="homeFilter === 'category'" class="home-category-panel">
+          <button
+            v-for="row in categoryCounts"
+            :key="row.name"
+            :class="{ active: selectedCategory === row.name }"
+            @click="chooseHomeCategory(row.name)"
+          ><span>{{ row.name }}</span><b>{{ row.count }}</b></button>
+          <div v-if="!categoryCounts.length" class="home-empty-categories">暂无分类</div>
+        </div>
 
-          <button v-if="stats.expiring" class="alert-strip" @click="activeTab = 'reminders'">
-            <span>🔔</span><strong>有 {{ stats.expiring }} 条药品记录即将过期</strong><em>去查看 ›</em>
+        <section class="home-record-list" :class="{ 'category-mode': homeFilter === 'category' }">
+          <button v-for="card in homeRecordCards" :key="card.record.id" class="home-record-row" @click="openRecordDetail(card.record)">
+            <div class="record-thumb" :style="imageStyle(card.product.imageUrl)"><span v-if="!card.product.imageUrl">💊</span></div>
+            <div class="record-main">
+              <strong>{{ card.product.name || card.record.productName || '未命名药品' }}</strong>
+              <small>{{ card.record.expiryDate || '-' }} 失效<span v-if="card.record.quantity !== undefined"> · 数量 {{ card.record.quantity }}</span></small>
+            </div>
+            <i :class="['record-status', statClass(card.record)]">{{ describeDays(diffDays(card.record.expiryDate)) }}</i>
+            <em>›</em>
           </button>
 
-          <section class="panel trend-panel">
-            <div class="section-head"><div><h2>未来30天效期趋势</h2><p>按失效日期分段统计</p></div><span class="blue-dot">● 到期记录</span></div>
-            <div class="trend-chart">
-              <div v-for="bar in trendBars" :key="bar.label" class="bar-col">
-                <b>{{ bar.count }}</b>
-                <div class="bar-track"><i :style="{ height: bar.height + 'px' }"></i></div>
-                <small>{{ bar.label }}</small>
-              </div>
-            </div>
-          </section>
+          <div v-if="!homeRecordCards.length" class="home-list-empty">
+            <span>✓</span>
+            <strong>{{ homeFilterTitle }}暂无记录</strong>
+            <small v-if="homeFilter === 'category' && !selectedCategory">请选择上方分类</small>
+            <small v-else>点击下方“+”添加临期记录</small>
+          </div>
+        </section>
 
-          <section class="panel list-panel">
-            <div class="section-head">
-              <div><h2>即将过期的药品</h2><p>优先处理临近失效日期的记录</p></div>
-              <button @click="activeTab = 'reminders'">查看全部 ›</button>
-            </div>
+        <section class="health-tip-card">
+          <div class="health-tip-icon">✓</div>
+          <div><strong>定期检查药品</strong><small>让健康多一份保障</small></div>
+          <em>›</em>
+        </section>
 
-            <button v-for="card in imminentCards" :key="card.record.id" class="medicine-row" @click="openRecordDetail(card.record)">
-              <div class="thumb" :style="imageStyle(card.product.imageUrl)"><span v-if="!card.product.imageUrl">💊</span></div>
-              <div class="row-main">
-                <strong>{{ card.product.name || '未命名药品' }}</strong>
-                <div class="chips"><span>{{ card.product.category || '未分类' }}</span><span v-if="card.product.tags?.[0]" class="soft">{{ card.product.tags[0] }}</span></div>
-                <small>数量 {{ card.record.quantity }} · 失效 {{ card.record.expiryDate || '-' }}</small>
-              </div>
-              <i :class="['countdown', statClass(card.record)]">{{ describeDays(diffDays(card.record.expiryDate)) }}</i>
-            </button>
-
-            <div v-if="!imminentCards.length" class="empty-state"><span>✓</span><strong>近期没有即将过期的药品</strong><small>当前药箱状态良好</small></div>
-          </section>
-        </template>
-
-        <template v-else-if="activeTab === 'products'">
-          <section class="panel list-panel products-panel">
-            <div class="section-head">
-              <div><h2>药品资料</h2><p>已建立 {{ products.length }} 种药品资料</p></div>
-              <button class="blue-link" @click="openProductForm()">＋ 新增</button>
-            </div>
-            <div class="category-scroll">
-              <button :class="{active: !query}" @click="query = ''">全部</button>
-              <button v-for="c in categories" :key="c" @click="query = c">{{ c }}</button>
-            </div>
-            <button v-for="product in filteredProducts" :key="product.id" class="medicine-row" @click="openProductDetail(product)">
-              <div class="thumb" :style="imageStyle(product.imageUrl)"><span v-if="!product.imageUrl">💊</span></div>
-              <div class="row-main">
-                <strong>{{ product.name }}</strong>
-                <div class="chips"><span>{{ product.category || '未分类' }}</span></div>
-                <small>{{ product.barcode || '无条码' }} · 默认有效期 {{ product.defaultShelfLifeValue || '-' }}{{ unitText(product.defaultShelfLifeUnit) }}</small>
-              </div>
-              <em class="arrow">›</em>
-            </button>
-            <div v-if="!filteredProducts.length" class="empty-state"><span>＋</span><strong>暂无药品资料</strong><small>点击右上角新增药品</small></div>
-          </section>
-        </template>
-
-        <template v-else-if="activeTab === 'reminders'">
-          <section class="panel list-panel">
-            <div class="section-head"><div><h2>临期提醒</h2><p>{{ alertCards.length }} 条需要关注</p></div><button @click="navigate('basicSettings')">提醒设置 ›</button></div>
-            <button v-for="card in alertCards" :key="card.record.id" class="medicine-row" @click="openRecordDetail(card.record)">
-              <div class="thumb" :style="imageStyle(card.product.imageUrl)"><span v-if="!card.product.imageUrl">💊</span></div>
-              <div class="row-main"><strong>{{ card.product.name }}</strong><small>{{ card.product.category || '未分类' }} · 失效 {{ card.record.expiryDate }}</small></div>
-              <i :class="['countdown', statClass(card.record)]">{{ describeDays(diffDays(card.record.expiryDate)) }}</i>
-            </button>
-            <div v-if="!alertCards.length" class="empty-state"><span>✓</span><strong>没有需要处理的提醒</strong><small>药品效期都在安全范围</small></div>
-          </section>
-        </template>
-
-        <nav class="tabbar">
-          <button :class="{active: activeTab === 'home'}" @click="activeTab='home'"><b>⌂</b><span>首页</span></button>
-          <button :class="{active: activeTab === 'products'}" @click="activeTab='products'"><b>▣</b><span>药品</span></button>
-          <button class="center-add" @click="products.length ? openRecordForm() : openProductForm()">＋</button>
-          <button :class="{active: activeTab === 'reminders'}" @click="activeTab='reminders'"><b>♧</b><span>提醒</span></button>
-          <button @click="navigate('settings')"><b>◎</b><span>我的</span></button>
+        <nav class="tabbar simple-tabbar">
+          <button class="active" @click="backHome()"><b>⌂</b><span>首页</span></button>
+          <button class="center-add" @click="openRecordForm()">＋</button>
+          <button @click="navigate('settings')"><b>♙</b><span>我的</span></button>
         </nav>
+      </section>
+
+      <section v-if="screen === 'productList'" class="page sub-page">
+        <header class="page-header"><button @click="back">‹</button><strong>药品资料</strong><button class="header-action" @click="openProductForm()">新增</button></header>
+        <div class="searchbar compact-search">
+          <span>⌕</span><input v-model="query" placeholder="搜索药品名称、条码、分类"><button @click="startScanner('query')"><b class="scan-icon"></b></button>
+        </div>
+        <section class="panel list-panel products-panel">
+          <div class="category-scroll"><button :class="{active: !query}" @click="query=''">全部</button><button v-for="c in categories" :key="c" @click="query=c">{{ c }}</button></div>
+          <button v-for="product in filteredProducts" :key="product.id" class="medicine-row" @click="openProductDetail(product)">
+            <div class="thumb" :style="imageStyle(product.imageUrl)"><span v-if="!product.imageUrl">💊</span></div>
+            <div class="row-main"><strong>{{ product.name }}</strong><div class="chips"><span>{{ product.category || '未分类' }}</span></div><small>{{ product.barcode || '无条码' }} · 默认有效期 {{ product.defaultShelfLifeValue || '-' }}{{ unitText(product.defaultShelfLifeUnit) }}</small></div><em class="arrow">›</em>
+          </button>
+          <div v-if="!filteredProducts.length" class="empty-state"><span>＋</span><strong>暂无药品资料</strong><small>点击右上角新增药品</small></div>
+        </section>
       </section>
 
       <section v-if="screen === 'productForm'" class="page sub-page">
@@ -667,28 +745,66 @@ function logout() {
         <button class="primary page-primary" @click="saveProduct">保存药品资料</button>
       </section>
 
-      <section v-if="screen === 'recordForm'" class="page sub-page">
-        <header class="page-header"><button @click="back">‹</button><strong>{{ editingRecordId ? '编辑药品记录' : '新增药品记录' }}</strong><span></span></header>
+      <section v-if="screen === 'recordForm'" class="page sub-page record-form-page">
+        <header class="page-header"><button @click="back">‹</button><strong>{{ editingRecordId ? '编辑临期记录' : '新增临期记录' }}</strong><span></span></header>
 
-        <button class="scan-entry" @click="startScanner('recordProduct')"><span class="scan-box"><b></b></span><div><strong>扫描药品条码</strong><small>快速识别并匹配已有药品资料</small></div><em>›</em></button>
+        <section class="record-section-card">
+          <header class="record-section-head"><span class="section-icon">▣</span><strong>基本信息</strong><small>填写药品的基础信息</small></header>
+          <div class="record-field required-field">
+            <label>名称</label>
+            <div class="record-control"><input v-model="recordForm.productName" list="record-product-options" placeholder="请输入药品名称" @input="recordForm.productId=''" @change="matchRecordProductByName" /><datalist id="record-product-options"><option v-for="p in products" :key="p.id" :value="p.name"></option></datalist></div>
+          </div>
+          <div class="record-field required-field">
+            <label>分类</label>
+            <div class="record-control"><select v-model="recordForm.category"><option value="">请选择分类</option><option v-for="c in categories" :key="c" :value="c">{{ c }}</option></select><em>›</em></div>
+          </div>
+          <div class="record-field image-field">
+            <label><b>图片</b><small>支持选择图片并上传</small></label>
+            <div class="record-image-actions">
+              <div v-if="recordForm.imageUrl" class="record-image-preview" :style="imageStyle(recordForm.imageUrl)"></div>
+              <label class="record-camera">▣<input type="file" accept="image/*" @change="uploadRecordImage"></label>
+            </div>
+          </div>
+          <div class="record-field">
+            <label>标签</label>
+            <div class="record-control"><input v-model="recordForm.tagText" placeholder="如 OTC、处方药、外用药"><em>›</em></div>
+          </div>
+          <div class="record-field">
+            <label>数量</label>
+            <div class="number-stepper"><button @click="recordForm.quantity=Math.max(0, Number(recordForm.quantity||0)-1)">−</button><b>{{ recordForm.quantity }}</b><button @click="recordForm.quantity=Number(recordForm.quantity||0)+1">＋</button></div>
+          </div>
+          <div class="record-field">
+            <label>数量预警</label>
+            <div class="number-stepper"><button @click="recordForm.warningQty=Math.max(0, Number(recordForm.warningQty||0)-1)">−</button><b>{{ recordForm.warningQty }}</b><button @click="recordForm.warningQty=Number(recordForm.warningQty||0)+1">＋</button></div>
+          </div>
+        </section>
 
-        <div class="form-card">
-          <label><span>药品 <i>*</i></span>
-            <select v-model="recordForm.productId" @change="applyProductToRecord(productMap.get(recordForm.productId))">
-              <option value="">手动输入 / 请选择</option><option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
-          </label>
-          <label v-if="!recordForm.productId"><span>药品名称</span><input v-model="recordForm.productName" placeholder="可手动输入"></label>
-          <label><span>数量</span><input type="number" min="0" v-model.number="recordForm.quantity"><em>件</em></label>
-          <label><span>生产日期</span><input type="date" v-model="recordForm.startDate"></label>
-          <label class="period"><span>有效期</span><input type="number" v-model="recordForm.shelfLifeValue"><select v-model="recordForm.shelfLifeUnit"><option value="day">天</option><option value="month">月</option><option value="year">年</option></select></label>
-          <label><span>失效日期 <i>*</i></span><input type="date" v-model="recordForm.expiryDate"></label>
-          <label><span>数量预警</span><input type="number" min="0" v-model.number="recordForm.warningQty"></label>
-          <label><span>提前提醒</span><input type="number" min="0" v-model.number="recordForm.remindDays"><em>天</em></label>
-          <label><span>存放位置</span><input v-model="recordForm.location" placeholder="如 家庭药箱 / 抽屉 / 冰箱冷藏"></label>
-          <label class="textarea-label"><span>备注</span><textarea v-model="recordForm.remark" placeholder="如 医生建议、批号、用法用量等"></textarea></label>
+        <section class="record-section-card">
+          <header class="record-section-head"><span class="section-icon">▦</span><strong>日期信息</strong><small>设置有效期，及时提醒</small></header>
+          <div class="record-field"><label>生产日期</label><div class="record-control"><input type="date" v-model="recordForm.startDate"><em>›</em></div></div>
+          <div class="record-field duration-field">
+            <label>期限</label>
+            <div class="duration-control"><input type="number" min="0" v-model="recordForm.shelfLifeValue" placeholder="请输入"><div class="duration-units"><button :class="{active:recordForm.shelfLifeUnit==='day'}" @click="recordForm.shelfLifeUnit='day'">天</button><button :class="{active:recordForm.shelfLifeUnit==='month'}" @click="recordForm.shelfLifeUnit='month'">月</button><button :class="{active:recordForm.shelfLifeUnit==='year'}" @click="recordForm.shelfLifeUnit='year'">年</button></div></div>
+          </div>
+          <div class="record-field required-field"><label>失效日期</label><div class="record-control"><input type="date" v-model="recordForm.expiryDate"><em>›</em></div></div>
+          <div class="record-field reminder-field">
+            <label><b>提醒</b><small>提前 {{ recordForm.remindDays }} 天提醒</small></label>
+            <div class="reminder-actions"><input class="remind-days-input" type="number" min="0" v-model.number="recordForm.remindDays"><label class="new-switch"><input type="checkbox" v-model="recordForm.reminder"><i></i></label></div>
+          </div>
+        </section>
+
+        <section class="record-section-card">
+          <header class="record-section-head"><span class="section-icon">◇</span><strong>其他信息</strong><small>补充信息，便于管理</small></header>
+          <button class="record-field button-field" @click="startScanner('recordProduct')"><label>条形码 &amp; 二维码</label><div class="record-control"><span class="scan-inline">⌗</span><input v-model="recordForm.barcode" placeholder="点击扫描或输入" @click.stop><em>›</em></div></button>
+          <div class="record-field"><label>存放位置</label><div class="record-control"><input v-model="recordForm.location" placeholder="如 家庭药箱 / 抽屉"></div></div>
+          <div class="record-field"><label>备注</label><div class="record-control"><input v-model="recordForm.remark" placeholder="请输入备注"><em>›</em></div></div>
+          <div class="record-field reminder-field"><label><b>同时保存到模板库</b><small>下次可快速添加相同药品</small></label><label class="new-switch"><input type="checkbox" v-model="recordForm.saveTemplate"><i></i></label></div>
+        </section>
+
+        <div class="record-bottom-actions">
+          <button class="record-save-light" @click="saveRecord(false)">保存</button>
+          <button class="record-save-primary" @click="saveRecord(true)">保存再记</button>
         </div>
-        <div class="dual-actions"><button class="primary" @click="saveRecord(false)">保存记录</button><button class="secondary" @click="saveRecord(true)">保存后继续添加</button></div>
       </section>
 
       <section v-if="screen === 'productDetail' && selectedProduct" class="page sub-page">
@@ -739,7 +855,7 @@ function logout() {
         <div class="settings-list">
           <button @click="navigate('basicSettings')"><span>🔔</span><div><strong>药品提醒设置</strong><small>临期天数与默认提醒时间</small></div><em>›</em></button>
           <button @click="loadAll"><span>↻</span><div><strong>刷新同步</strong><small>重新加载最新数据</small></div><em>›</em></button>
-          <button @click="activeTab='products'; backHome('products')"><span>▣</span><div><strong>药品资料管理</strong><small>{{ products.length }} 种药品资料</small></div><em>›</em></button>
+          <button @click="navigate('productList')"><span>▣</span><div><strong>药品资料管理</strong><small>{{ products.length }} 种药品资料</small></div><em>›</em></button>
           <button @click="openAdmin"><span>⚙</span><div><strong>后台配置</strong><small>七牛云、公众号和高级设置</small></div><em>›</em></button>
         </div>
         <button v-if="auth.required" class="logout-btn" @click="logout">退出登录</button>

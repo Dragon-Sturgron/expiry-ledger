@@ -1,9 +1,9 @@
 {
   "name": "expiry-ledger-complete-medicine",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
-  "description": "临期账本：药品效期管理，EdgeOne Pages + KV + 七牛云 + 微信通知",
+  "description": "临期账本：药品效期管理，首页状态卡联动筛选 + 新版临期记录表单 + EdgeOne KV",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build && node scripts/postbuild.mjs",
