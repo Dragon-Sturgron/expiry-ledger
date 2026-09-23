@@ -530,7 +530,7 @@ async function saveRecord(continueAdd = false) {
       shelfLifeValue: recordForm.shelfLifeValue ? Number(recordForm.shelfLifeValue) : '',
       shelfLifeUnit: recordForm.shelfLifeUnit,
       expiryDate: recordForm.expiryDate,
-      reminder: Boolean(recordForm.reminder),
+      reminder: true,
       location: recordForm.location.trim(),
       remark: recordForm.remark.trim()
     }
@@ -897,10 +897,6 @@ function logout() {
             <div class="duration-control"><input type="number" min="0" v-model="recordForm.shelfLifeValue" placeholder="请输入"><div class="duration-units"><button :class="{active:recordForm.shelfLifeUnit==='day'}" @click="recordForm.shelfLifeUnit='day'">天</button><button :class="{active:recordForm.shelfLifeUnit==='month'}" @click="recordForm.shelfLifeUnit='month'">月</button><button :class="{active:recordForm.shelfLifeUnit==='year'}" @click="recordForm.shelfLifeUnit='year'">年</button></div></div>
           </div>
           <div class="record-field required-field"><label>失效日期</label><div class="record-control"><input type="date" v-model="recordForm.expiryDate"><em>›</em></div></div>
-          <div class="record-field reminder-field global-reminder-field">
-            <label><b>提醒</b><small>按“药品提醒设置”统一提醒</small></label>
-            <label class="new-switch"><input type="checkbox" v-model="recordForm.reminder"><i></i></label>
-          </div>
         </section>
 
         <section class="record-section-card">
