@@ -59,6 +59,7 @@ export function defaultSettings() {
     defaultRemindDays: 7,
     defaultCategory: '家庭常备',
     categories: ['家庭常备', '感冒发热', '肠胃用药', '消毒护理', '儿童用药', '慢病用药'],
+    tags: ['OTC', '处方药', '内服药', '外用药', '儿童药'],
     qiniuAccessKey: '',
     qiniuSecretKey: '',
     qiniuBucket: '',

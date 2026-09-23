@@ -23,6 +23,10 @@ const scannerInstance = ref(null)
 const scannerTarget = ref('query')
 const scannerTip = ref('')
 const wechatStatus = ref({ bound: false })
+const tagPickerVisible = ref(false)
+const tagKeyword = ref('')
+let tagLongPressTimer = null
+let tagLongPressTriggered = false
 
 const auth = reactive({
   checking: true,
@@ -38,6 +42,7 @@ const settings = reactive({
   defaultRemindDays: 3,
   defaultCategory: '家庭常备',
   categories: ['家庭常备', '感冒发热', '肠胃用药', '消毒护理', '儿童用药', '慢病用药'],
+  tags: ['OTC', '处方药', '内服药', '外用药', '儿童药'],
   qiniuAccessKey: '',
   qiniuSecretKey: '',
   qiniuBucket: '',
@@ -82,7 +87,6 @@ function emptyRecord() {
     shelfLifeUnit: 'day',
     expiryDate: '',
     reminder: true,
-    remindDays: 7,
     location: '',
     remark: '',
     saveTemplate: false
@@ -318,7 +322,6 @@ function openProductForm(product = null) {
 
 function openRecordForm(record = null, product = null) {
   Object.assign(recordForm, emptyRecord(), {
-    remindDays: Number(settings.defaultRemindDays) || 7,
     category: settings.defaultCategory || categories.value[0] || '家庭常备'
   })
   editingRecordId.value = ''
@@ -384,10 +387,104 @@ async function saveProduct() {
 }
 
 function recordTags() {
+  if (Array.isArray(recordForm.tags)) return [...new Set(recordForm.tags.map(x => String(x).trim()).filter(Boolean))]
   return String(recordForm.tagText || '')
     .split(/[，,\s]+/)
     .map(x => x.trim())
     .filter(Boolean)
+}
+
+const tagLibrary = computed(() => {
+  const pool = [
+    ...(settings.tags || []),
+    ...products.value.flatMap(p => p.tags || []),
+    ...(recordForm.tags || [])
+  ]
+  return [...new Set(pool.map(x => String(x).trim()).filter(Boolean))]
+})
+
+const filteredTagLibrary = computed(() => {
+  const key = tagKeyword.value.trim().toLowerCase()
+  if (!key) return tagLibrary.value
+  return tagLibrary.value.filter(tag => tag.toLowerCase().includes(key))
+})
+
+function openTagPicker() {
+  tagKeyword.value = ''
+  tagPickerVisible.value = true
+}
+
+function closeTagPicker() {
+  tagPickerVisible.value = false
+  tagKeyword.value = ''
+  clearTimeout(tagLongPressTimer)
+}
+
+function syncRecordTagText() {
+  recordForm.tags = recordTags()
+  recordForm.tagText = recordForm.tags.join('，')
+}
+
+function toggleRecordTag(tag) {
+  if (tagLongPressTriggered) {
+    tagLongPressTriggered = false
+    return
+  }
+  const set = new Set(recordTags())
+  if (set.has(tag)) set.delete(tag)
+  else set.add(tag)
+  recordForm.tags = [...set]
+  recordForm.tagText = recordForm.tags.join('，')
+}
+
+async function persistTagLibrary(tags) {
+  settings.tags = [...new Set(tags.map(x => String(x).trim()).filter(Boolean))]
+  try { await api.saveSettings({ ...settings }) } catch (e) { showToast(e.message || '标签保存失败') }
+}
+
+async function addTagFromKeyword() {
+  let name = tagKeyword.value.trim()
+  if (!name) name = prompt('请输入标签名称')?.trim() || ''
+  if (!name) return
+  const next = [...new Set([...(settings.tags || []), name])]
+  await persistTagLibrary(next)
+  if (!recordTags().includes(name)) {
+    recordForm.tags = [...recordTags(), name]
+    recordForm.tagText = recordForm.tags.join('，')
+  }
+  tagKeyword.value = ''
+}
+
+function beginTagLongPress(tag) {
+  tagLongPressTriggered = false
+  clearTimeout(tagLongPressTimer)
+  tagLongPressTimer = setTimeout(() => {
+    tagLongPressTriggered = true
+    editOrDeleteTag(tag)
+  }, 650)
+}
+
+function endTagLongPress() {
+  clearTimeout(tagLongPressTimer)
+}
+
+async function editOrDeleteTag(tag) {
+  const nextName = prompt(`修改标签“${tag}”\n留空并确定可删除该标签`, tag)
+  if (nextName === null) return
+  const value = nextName.trim()
+  if (!value) {
+    if (!confirm(`确定删除标签“${tag}”吗？`)) return
+    await persistTagLibrary((settings.tags || []).filter(x => x !== tag))
+    recordForm.tags = recordTags().filter(x => x !== tag)
+    recordForm.tagText = recordForm.tags.join('，')
+    return
+  }
+  if (value === tag) return
+  const nextTags = (settings.tags || []).map(x => x === tag ? value : x)
+  if (!(settings.tags || []).includes(tag)) nextTags.push(value)
+  await persistTagLibrary(nextTags)
+  recordForm.tags = recordTags().map(x => x === tag ? value : x)
+  recordForm.tagText = [...new Set(recordForm.tags)].join('，')
 }
 
 async function ensureRecordProduct() {
@@ -446,7 +543,6 @@ async function saveRecord(continueAdd = false) {
       shelfLifeUnit: recordForm.shelfLifeUnit,
       expiryDate: recordForm.expiryDate,
       reminder: Boolean(recordForm.reminder),
-      remindDays: Number(recordForm.remindDays) || 0,
       location: recordForm.location.trim(),
       remark: recordForm.remark.trim()
     }
@@ -765,10 +861,14 @@ function logout() {
               <label class="record-camera">▣<input type="file" accept="image/*" @change="uploadRecordImage"></label>
             </div>
           </div>
-          <div class="record-field">
+          <button class="record-field button-field tag-picker-row" @click="openTagPicker">
             <label>标签</label>
-            <div class="record-control"><input v-model="recordForm.tagText" placeholder="如 OTC、处方药、外用药"><em>›</em></div>
-          </div>
+            <div class="record-control tag-picker-summary">
+              <span v-if="recordTags().length" class="tag-summary-text">{{ recordTags().slice(0, 2).join('、') }}<template v-if="recordTags().length > 2"> 等{{ recordTags().length }}个</template></span>
+              <span v-else class="tag-summary-placeholder">请选择标签</span>
+              <em>›</em>
+            </div>
+          </button>
           <div class="record-field">
             <label>数量</label>
             <div class="number-stepper"><button @click="recordForm.quantity=Math.max(0, Number(recordForm.quantity||0)-1)">−</button><b>{{ recordForm.quantity }}</b><button @click="recordForm.quantity=Number(recordForm.quantity||0)+1">＋</button></div>
@@ -787,9 +887,9 @@ function logout() {
             <div class="duration-control"><input type="number" min="0" v-model="recordForm.shelfLifeValue" placeholder="请输入"><div class="duration-units"><button :class="{active:recordForm.shelfLifeUnit==='day'}" @click="recordForm.shelfLifeUnit='day'">天</button><button :class="{active:recordForm.shelfLifeUnit==='month'}" @click="recordForm.shelfLifeUnit='month'">月</button><button :class="{active:recordForm.shelfLifeUnit==='year'}" @click="recordForm.shelfLifeUnit='year'">年</button></div></div>
           </div>
           <div class="record-field required-field"><label>失效日期</label><div class="record-control"><input type="date" v-model="recordForm.expiryDate"><em>›</em></div></div>
-          <div class="record-field reminder-field">
-            <label><b>提醒</b><small>提前 {{ recordForm.remindDays }} 天提醒</small></label>
-            <div class="reminder-actions"><input class="remind-days-input" type="number" min="0" v-model.number="recordForm.remindDays"><label class="new-switch"><input type="checkbox" v-model="recordForm.reminder"><i></i></label></div>
+          <div class="record-field reminder-field global-reminder-field">
+            <label><b>提醒</b><small>按“药品提醒设置”统一提醒</small></label>
+            <label class="new-switch"><input type="checkbox" v-model="recordForm.reminder"><i></i></label>
           </div>
         </section>
 
@@ -930,6 +1030,39 @@ function logout() {
         </div>
         <button v-if="auth.required" class="logout-btn" @click="logout">退出访问</button>
       </section>
+
+      <div v-if="tagPickerVisible" class="tag-picker-mask" @click.self="closeTagPicker">
+        <section class="tag-picker-sheet">
+          <header class="tag-picker-header">
+            <span></span>
+            <strong>标签</strong>
+            <button @click="closeTagPicker" aria-label="关闭">×</button>
+          </header>
+          <div class="tag-picker-tools">
+            <p>长按可编辑或删除</p>
+            <label class="tag-search-box"><span>⌕</span><input v-model="tagKeyword" placeholder="请输入关键词" autofocus></label>
+          </div>
+          <div class="tag-chip-list">
+            <button
+              v-for="tag in filteredTagLibrary"
+              :key="tag"
+              :class="{ selected: recordTags().includes(tag) }"
+              @click="toggleRecordTag(tag)"
+              @mousedown="beginTagLongPress(tag)"
+              @mouseup="endTagLongPress"
+              @mouseleave="endTagLongPress"
+              @touchstart.passive="beginTagLongPress(tag)"
+              @touchend="endTagLongPress"
+              @contextmenu.prevent="editOrDeleteTag(tag)"
+            >{{ tag }}</button>
+            <button class="tag-add-chip" @click="addTagFromKeyword">＋ 添加标签</button>
+          </div>
+          <div v-if="tagKeyword && !filteredTagLibrary.length" class="tag-picker-empty">没有匹配标签，可直接添加</div>
+          <footer class="tag-picker-footer">
+            <button class="tag-picker-done" @click="syncRecordTagText(); closeTagPicker()">完成</button>
+          </footer>
+        </section>
+      </div>
 
       <div v-if="scannerVisible" class="modal-mask" @click.self="stopScanner">
         <div class="scanner-card"><div id="reader"></div><p>{{ scannerTip }}</p><button class="primary" @click="stopScanner">关闭扫码</button></div>

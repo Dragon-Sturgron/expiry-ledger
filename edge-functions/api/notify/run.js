@@ -38,7 +38,7 @@ export async function onRequest({ request, env }) {
   const candidates = records.filter(r => {
     if (r.reminder === false || !r.expiryDate) return false
     const days = dayDiff(r.expiryDate)
-    const remindDays = Number(r.remindDays ?? settings.defaultRemindDays ?? 7)
+    const remindDays = Number(settings.defaultRemindDays ?? 7)
     return days !== null && days >= 0 && days <= remindDays
   }).slice(0, 3)
 
