@@ -781,6 +781,9 @@ function logout() {
             <div class="record-thumb" :style="imageStyle(card.product.imageUrl)"><span v-if="!card.product.imageUrl">💊</span></div>
             <div class="record-main">
               <strong>{{ card.product.name || card.record.productName || '未命名药品' }}</strong>
+              <div v-if="(card.product.tags && card.product.tags.length) || (card.record.productSnapshot?.tags && card.record.productSnapshot.tags.length)" class="record-tag-row">
+                <span v-for="tag in ((card.product.tags && card.product.tags.length ? card.product.tags : (card.record.productSnapshot?.tags || [])).slice(0, 3))" :key="tag" class="record-tag-chip">{{ tag }}</span>
+              </div>
               <small>{{ card.record.expiryDate || '-' }} 失效<span v-if="card.record.quantity !== undefined"> · 数量 {{ card.record.quantity }}</span></small>
             </div>
             <i :class="['record-status', statClass(card.record)]">{{ describeDays(diffDays(card.record.expiryDate)) }}</i>

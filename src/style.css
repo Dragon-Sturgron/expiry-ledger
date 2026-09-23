@@ -379,12 +379,14 @@ select { appearance: none; }
 .home-record-list {
   overflow:hidden; border-radius:18px; background:rgba(255,255,255,.9); border:1px solid #e6eef8; box-shadow:0 10px 28px rgba(46,97,151,.06); margin-bottom:12px;
 }
-.home-record-row { width:100%; min-height:72px; display:flex; align-items:center; gap:9px; padding:9px 10px; text-align:left; border-bottom:1px solid #edf2f8; }
+.home-record-row { width:100%; min-height:78px; display:flex; align-items:center; gap:9px; padding:9px 10px; text-align:left; border-bottom:1px solid #edf2f8; }
 .home-record-row:last-child { border-bottom:0; }
 .record-thumb { width:48px; height:48px; flex:0 0 48px; border-radius:12px; background:#f1f6fb center/contain no-repeat; display:grid; place-items:center; font-size:22px; }
 .record-main { flex:1; min-width:0; }
 .record-main strong { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#18325a; font-size:13px; }
 .record-main small { display:block; margin-top:5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#7890ad; font-size:9px; }
+.record-tag-row { display:flex; gap:4px; flex-wrap:wrap; margin-top:5px; }
+.record-tag-chip { display:inline-flex; align-items:center; height:18px; padding:0 6px; border-radius:6px; background:linear-gradient(145deg,#10c78e,#09b57e); color:#fff; font-size:9px; font-weight:700; box-shadow:0 4px 10px rgba(16,199,142,.18); }
 .record-status { font-style:normal; flex:0 0 auto; max-width:92px; padding:6px 8px; border-radius:9px; font-size:10px; font-weight:700; white-space:nowrap; }
 .record-status.expiring { color:#ee7f16; background:#fff1dc; }
 .record-status.expired { color:#f04e53; background:#ffe8e9; }
