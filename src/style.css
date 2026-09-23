@@ -454,7 +454,28 @@ select { appearance: none; }
 .new-switch input:checked + i::after { transform:translateX(19px); }
 .button-field { width:100%; text-align:left; }
 .button-field > label { pointer-events:none; }
-.scan-inline { color:#2588f3; font-size:18px; }
+.barcode-field { align-items:center; }
+.barcode-control { gap:8px; }
+.barcode-badge { width:32px; height:32px; flex:0 0 32px; border-radius:10px; display:grid; place-items:center; background:linear-gradient(145deg,#eef6ff,#deefff); box-shadow:inset 0 0 0 1px #d7e8fa; }
+.barcode-badge i { position:relative; width:16px; height:16px; display:block; }
+.barcode-badge i::before, .barcode-badge i::after { content:""; position:absolute; inset:0; }
+.barcode-badge i::before {
+  background:
+    linear-gradient(#2f8cf7,#2f8cf7) left 0 top 0/2px 6px no-repeat,
+    linear-gradient(#2f8cf7,#2f8cf7) left 0 top 0/6px 2px no-repeat,
+    linear-gradient(#2f8cf7,#2f8cf7) right 0 top 0/2px 6px no-repeat,
+    linear-gradient(#2f8cf7,#2f8cf7) right 0 top 0/6px 2px no-repeat,
+    linear-gradient(#2f8cf7,#2f8cf7) left 0 bottom 0/2px 6px no-repeat,
+    linear-gradient(#2f8cf7,#2f8cf7) left 0 bottom 0/6px 2px no-repeat,
+    linear-gradient(#2f8cf7,#2f8cf7) right 0 bottom 0/2px 6px no-repeat,
+    linear-gradient(#2f8cf7,#2f8cf7) right 0 bottom 0/6px 2px no-repeat;
+}
+.barcode-badge i::after { left:3px; right:3px; top:7px; height:2px; background:#2f8cf7; box-shadow:0 -4px 0 rgba(47,140,247,.55), 0 4px 0 rgba(47,140,247,.55); }
+.template-switch-field { min-height:64px; align-items:center; }
+.template-switch-copy { display:flex; flex-direction:column; justify-content:center; gap:4px; width:auto !important; flex:1 1 auto !important; min-width:0; }
+.template-switch-copy b { color:#18375f; font-size:12px; line-height:1.2; }
+.template-switch-copy small { color:#9aa9bb; font-size:9px; line-height:1.45; white-space:normal !important; }
+.template-switch { margin-left:12px; align-self:center; }
 .record-bottom-actions { position:sticky; bottom:8px; display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:15px; padding:7px; border-radius:18px; background:rgba(247,251,255,.92); backdrop-filter:blur(12px); }
 .record-bottom-actions button { min-height:48px; border-radius:13px; font-weight:700; font-size:13px; }
 .record-save-light { background:#e9f3ff; color:#217bd9; }

@@ -795,10 +795,20 @@ function logout() {
 
         <section class="record-section-card">
           <header class="record-section-head"><span class="section-icon">◇</span><strong>其他信息</strong><small>补充信息，便于管理</small></header>
-          <button class="record-field button-field" @click="startScanner('recordProduct')"><label>条形码 &amp; 二维码</label><div class="record-control"><span class="scan-inline">⌗</span><input v-model="recordForm.barcode" placeholder="点击扫描或输入" @click.stop><em>›</em></div></button>
+          <button class="record-field button-field barcode-field" @click="startScanner('recordProduct')">
+            <label>条形码 &amp; 二维码</label>
+            <div class="record-control barcode-control">
+              <span class="barcode-badge" aria-hidden="true"><i></i></span>
+              <input v-model="recordForm.barcode" placeholder="点击扫描或输入" @click.stop>
+              <em>›</em>
+            </div>
+          </button>
           <div class="record-field"><label>存放位置</label><div class="record-control"><input v-model="recordForm.location" placeholder="如 家庭药箱 / 抽屉"></div></div>
           <div class="record-field"><label>备注</label><div class="record-control"><input v-model="recordForm.remark" placeholder="请输入备注"><em>›</em></div></div>
-          <div class="record-field reminder-field"><label><b>同时保存到模板库</b><small>下次可快速添加相同药品</small></label><label class="new-switch"><input type="checkbox" v-model="recordForm.saveTemplate"><i></i></label></div>
+          <div class="record-field template-switch-field">
+            <label class="template-switch-copy"><b>同时保存到模板库</b><small>下次可快速添加相同药品</small></label>
+            <label class="new-switch template-switch"><input type="checkbox" v-model="recordForm.saveTemplate"><i></i></label>
+          </div>
         </section>
 
         <div class="record-bottom-actions">
