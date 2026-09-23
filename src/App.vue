@@ -240,11 +240,6 @@ const homeRecordCards = computed(() => {
     list = list.filter(({ record }) => getStatus(record, Number(settings.nearDays) || 30).key === 'expiring')
   } else if (homeFilter.value === 'expired') {
     list = list.filter(({ record }) => getStatus(record, Number(settings.nearDays) || 30).key === 'expired')
-  } else if (homeFilter.value === 'category') {
-    if (!selectedCategory.value) return []
-    list = list.filter(({ product }) => (product.category || '未分类') === selectedCategory.value)
-  }
-
   if (!key) return list
   return list.filter(({ record, product }) => [
     product.name,
@@ -259,7 +254,6 @@ const homeRecordCards = computed(() => {
 const homeFilterTitle = computed(() => {
   if (homeFilter.value === 'expiring') return '即将过期'
   if (homeFilter.value === 'expired') return '已过期'
-  if (homeFilter.value === 'category') return selectedCategory.value || '我的分类'
   return '全部药品'
 })
 
@@ -669,6 +663,46 @@ async function stopScanner() {
 }
 
 
+
+async function persistCategories(nextCategories) {
+  settings.categories = [...new Set(nextCategories.map(x => String(x).trim()).filter(Boolean))]
+  await api.saveSettings({ ...settings })
+  showToast('分类已保存')
+}
+
+async function addCategoryFromManage() {
+  const name = prompt('请输入分类名称')
+  if (name === null) return
+  const value = name.trim()
+  if (!value) return
+  if (categories.value.includes(value)) return showToast('该分类已存在')
+  try {
+    await persistCategories([...(settings.categories || []), value])
+  } catch (e) {
+    showToast(e.message || '保存分类失败')
+  }
+}
+
+async function editCategoryFromManage(name) {
+  const nextName = prompt(`修改分类“${name}”\n留空并确定可删除该分类`, name)
+  if (nextName === null) return
+  const value = nextName.trim()
+  try {
+    if (!value) {
+      if (!confirm(`确定删除分类“${name}”吗？已有记录不会被删除。`)) return
+      await persistCategories((settings.categories || []).filter(x => x !== name))
+      return
+    }
+    if (value === name) return
+    if (categories.value.includes(value)) return showToast('该分类已存在')
+    const next = (settings.categories || []).map(x => x === name ? value : x)
+    if (!(settings.categories || []).includes(name)) next.push(value)
+    await persistCategories(next)
+  } catch (e) {
+    showToast(e.message || '保存分类失败')
+  }
+}
+
 async function bindWechat() {
   try {
     const data = await api.getWechatBindUrl()
@@ -734,7 +768,6 @@ function logout() {
             <h1>临期账本</h1>
             <p>守护家人健康 · 让每一份药品不浪费</p>
           </div>
-          <button class="home-bell" @click="navigate('settings')" aria-label="设置">♧<i></i></button>
         </header>
 
         <section class="home-hero-card">
@@ -761,19 +794,6 @@ function logout() {
           <button class="home-metric expired" :class="{ selected: homeFilter === 'expired' }" @click="setHomeFilter('expired')">
             <span class="metric-icon">!</span><b>{{ stats.expired }}</b><small>已过期</small>
           </button>
-          <button class="home-metric category" :class="{ selected: homeFilter === 'category' }" @click="setHomeFilter('category')">
-            <span class="metric-icon">▰</span><b>{{ categories.length }}</b><small>我的分类</small>
-          </button>
-        </div>
-
-        <div v-if="homeFilter === 'category'" class="home-category-panel">
-          <button
-            v-for="row in categoryCounts"
-            :key="row.name"
-            :class="{ active: selectedCategory === row.name }"
-            @click="chooseHomeCategory(row.name)"
-          ><span>{{ row.name }}</span><b>{{ row.count }}</b></button>
-          <div v-if="!categoryCounts.length" class="home-empty-categories">暂无分类</div>
         </div>
 
         <section class="home-record-list" :class="{ 'category-mode': homeFilter === 'category' }">
@@ -796,12 +816,6 @@ function logout() {
             <small v-if="homeFilter === 'category' && !selectedCategory">请选择上方分类</small>
             <small v-else>点击下方“+”添加临期记录</small>
           </div>
-        </section>
-
-        <section class="health-tip-card">
-          <div class="health-tip-icon">✓</div>
-          <div><strong>定期检查药品</strong><small>让健康多一份保障</small></div>
-          <em>›</em>
         </section>
 
         <nav class="tabbar simple-tabbar">
@@ -978,10 +992,39 @@ function logout() {
         <div class="settings-list">
           <button @click="navigate('basicSettings')"><span>🔔</span><div><strong>药品提醒设置</strong><small>临期天数与默认提醒时间</small></div><em>›</em></button>
           <button @click="loadAll"><span>↻</span><div><strong>刷新同步</strong><small>重新加载最新数据</small></div><em>›</em></button>
+          <button @click="navigate('categoryManage')"><span>▰</span><div><strong>我的分类</strong><small>{{ categories.length }} 个分类</small></div><em>›</em></button>
           <button @click="navigate('productList')"><span>▣</span><div><strong>药品资料管理</strong><small>{{ products.length }} 种药品资料</small></div><em>›</em></button>
           <button @click="openAdmin"><span>⚙</span><div><strong>后台配置</strong><small>七牛云、公众号和高级设置</small></div><em>›</em></button>
         </div>
         <button v-if="auth.required" class="logout-btn" @click="logout">退出登录</button>
+      </section>
+
+      <section v-if="screen === 'categoryManage'" class="page sub-page">
+        <header class="page-header"><button @click="back">‹</button><strong>我的分类</strong><span></span></header>
+        <section class="category-manage-card">
+          <div class="category-manage-head">
+            <div>
+              <strong>药品分类</strong>
+              <small>用于新增临期记录时快速分类</small>
+            </div>
+            <button @click="addCategoryFromManage">＋ 新增分类</button>
+          </div>
+          <div v-if="categories.length" class="category-manage-list">
+            <div v-for="name in categories" :key="name" class="category-manage-row">
+              <div class="category-manage-icon">▰</div>
+              <div class="category-manage-main">
+                <strong>{{ name }}</strong>
+                <small>{{ categoryCounts.find(row => row.name === name)?.count || 0 }} 条临期记录</small>
+              </div>
+              <button @click="editCategoryFromManage(name)">编辑</button>
+            </div>
+          </div>
+          <div v-else class="empty-state">
+            <span>＋</span>
+            <strong>还没有分类</strong>
+            <small>点击右上角新增第一个分类</small>
+          </div>
+        </section>
       </section>
 
       <section v-if="screen === 'basicSettings'" class="page sub-page">

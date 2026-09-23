@@ -354,7 +354,7 @@ select { appearance: none; }
 .hero-dots i { width:5px; height:5px; border-radius:50%; background:#b8d8f6; }
 .hero-dots i:first-child { background:#1d86f5; width:7px; }
 
-.home-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+.home-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
 .home-metric {
   min-width:0; min-height:102px; padding:10px 3px 8px; display:flex; flex-direction:column; align-items:center; justify-content:center;
   border-radius:17px; background:rgba(255,255,255,.88); border:1px solid rgba(229,238,248,.96); box-shadow:0 7px 18px rgba(36,88,143,.04);
@@ -537,4 +537,93 @@ select { appearance: none; }
 @media (max-width:360px) {
   .tag-picker-tools { grid-template-columns:1fr; gap:8px; }
   .tag-summary-text { max-width:145px; }
+}
+
+
+/* v2.7 - My categories moved to 我的 */
+.category-manage-card {
+  overflow: hidden;
+  border-radius: 19px;
+  background: #fff;
+  border: 1px solid #e5edf7;
+  box-shadow: var(--shadow);
+}
+.category-manage-head {
+  min-height: 66px;
+  padding: 13px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #edf2f7;
+}
+.category-manage-head > div {
+  display: grid;
+  gap: 4px;
+}
+.category-manage-head strong {
+  color: #18375f;
+  font-size: 14px;
+}
+.category-manage-head small {
+  color: #91a0b2;
+  font-size: 9px;
+}
+.category-manage-head > button {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #eaf4ff;
+  color: #267fe5;
+  font-size: 11px;
+  font-weight: 700;
+}
+.category-manage-list {
+  display: grid;
+}
+.category-manage-row {
+  min-height: 66px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border-bottom: 1px solid #edf2f7;
+}
+.category-manage-row:last-child {
+  border-bottom: 0;
+}
+.category-manage-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #2685ee;
+  background: #eaf4ff;
+}
+.category-manage-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.category-manage-main strong {
+  color: #263d5c;
+  font-size: 12px;
+}
+.category-manage-main small {
+  color: #94a2b3;
+  font-size: 9px;
+}
+.category-manage-row > button {
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: #f2f7fc;
+  color: #4e7eaf;
+  font-size: 10px;
+}
+
+@media (max-width:360px) {
+  .home-metrics { gap: 5px; }
 }
