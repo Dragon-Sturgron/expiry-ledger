@@ -11,7 +11,6 @@ const loading = ref(false)
 const toast = ref('')
 const query = ref('')
 const homeFilter = ref('all')
-const selectedCategory = ref('')
 const products = ref([])
 const records = ref([])
 const selectedProduct = ref(null)
@@ -119,7 +118,6 @@ function back() {
 function backHome() {
   stack.value = []
   homeFilter.value = 'all'
-  selectedCategory.value = ''
   query.value = ''
   screen.value = 'home'
   selectedProduct.value = null
@@ -240,6 +238,8 @@ const homeRecordCards = computed(() => {
     list = list.filter(({ record }) => getStatus(record, Number(settings.nearDays) || 30).key === 'expiring')
   } else if (homeFilter.value === 'expired') {
     list = list.filter(({ record }) => getStatus(record, Number(settings.nearDays) || 30).key === 'expired')
+  }
+
   if (!key) return list
   return list.filter(({ record, product }) => [
     product.name,
@@ -259,12 +259,6 @@ const homeFilterTitle = computed(() => {
 
 function setHomeFilter(filter) {
   homeFilter.value = filter
-  if (filter !== 'category') selectedCategory.value = ''
-}
-
-function chooseHomeCategory(name) {
-  homeFilter.value = 'category'
-  selectedCategory.value = name
 }
 
 function statClass(record) {
@@ -796,7 +790,7 @@ function logout() {
           </button>
         </div>
 
-        <section class="home-record-list" :class="{ 'category-mode': homeFilter === 'category' }">
+        <section class="home-record-list">
           <button v-for="card in homeRecordCards" :key="card.record.id" class="home-record-row" @click="openRecordDetail(card.record)">
             <div class="record-thumb" :style="imageStyle(card.product.imageUrl)"><span v-if="!card.product.imageUrl">💊</span></div>
             <div class="record-main">
@@ -813,8 +807,7 @@ function logout() {
           <div v-if="!homeRecordCards.length" class="home-list-empty">
             <span>✓</span>
             <strong>{{ homeFilterTitle }}暂无记录</strong>
-            <small v-if="homeFilter === 'category' && !selectedCategory">请选择上方分类</small>
-            <small v-else>点击下方“+”添加临期记录</small>
+            <small>点击下方“+”添加临期记录</small>
           </div>
         </section>
 
