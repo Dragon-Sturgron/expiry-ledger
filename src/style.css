@@ -234,6 +234,9 @@ select { appearance: none; }
 .product-hero p { color: #74859a; font-size: 11px; line-height: 1.55; margin: 8px 0 0; }
 .title-with-tag { display: flex; align-items: center; gap: 6px; }
 .title-with-tag b { background: #e5f8ef; color: #249b72; border-radius: 7px; padding: 3px 6px; font-size: 9px; }
+.record-hero-info { flex:1; min-width:0; }
+.record-detail-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+.record-detail-tag { display:inline-flex; align-items:center; min-height:20px; padding:2px 7px; border-radius:7px; background:linear-gradient(145deg,#10c78e,#09b57e); color:#fff; font-size:9px; font-weight:700; line-height:1.2; box-shadow:0 4px 10px rgba(16,199,142,.16); }
 
 .detail-card { padding: 14px; margin-bottom: 12px; }
 .detail-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }

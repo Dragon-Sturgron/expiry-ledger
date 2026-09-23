@@ -944,7 +944,17 @@ function logout() {
 
         <div class="record-hero">
           <div class="hero-thumb" :style="imageStyle(productOf(selectedRecord).imageUrl)"><span v-if="!productOf(selectedRecord).imageUrl">💊</span></div>
-          <div><h2>{{ productOf(selectedRecord).name }}</h2><div class="chips"><span>{{ productOf(selectedRecord).category || '未分类' }}</span></div></div>
+          <div class="record-hero-info">
+            <h2>{{ productOf(selectedRecord).name }}</h2>
+            <div class="chips"><span>{{ productOf(selectedRecord).category || '未分类' }}</span></div>
+            <div v-if="(selectedRecord.productSnapshot?.tags || productOf(selectedRecord).tags || []).length" class="record-detail-tags">
+              <span
+                v-for="tag in (selectedRecord.productSnapshot?.tags || productOf(selectedRecord).tags || [])"
+                :key="tag"
+                class="record-detail-tag"
+              >{{ tag }}</span>
+            </div>
+          </div>
         </div>
 
         <div class="status-pair">
